@@ -11,12 +11,82 @@
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <!-- SIDEBAR -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-logo">
-      <span class="logo-icon">🌾</span>
-      <span class="logo-text">AGROTRIAL</span>
+  <!-- PANTALLA PRINCIPAL DE LOGIN / ACCESO -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-container">
+      <div class="login-brand">
+        <div class="login-logo-glow">🌾</div>
+        <h1 class="login-brand-title">AGROTRIAL</h1>
+        <p class="login-brand-tagline">Sistema Integral de Finanzas, Costos y Rentabilidad</p>
+      </div>
+
+      <div class="login-card-main">
+        <div class="login-section-title">
+          <span>Seleccioná tu perfil para ingresar:</span>
+        </div>
+
+        <div class="login-roles-grid">
+          <div class="login-role-btn role-dueno" onclick="loginAsRole('dueno')">
+            <div class="role-icon-box">👑</div>
+            <div class="role-btn-info">
+              <div class="role-btn-title">Dueño / Dirección</div>
+              <div class="role-btn-sub">Márgenes netos, rentabilidad del año y balances</div>
+            </div>
+            <div class="role-btn-arrow">→</div>
+          </div>
+
+          <div class="login-role-btn role-operador" onclick="loginAsRole('operador')">
+            <div class="role-icon-box">✍️</div>
+            <div class="role-btn-info">
+              <div class="role-btn-title">Operador de Carga</div>
+              <div class="role-btn-sub">Carga de ingresos, gastos variables y costos fijos</div>
+            </div>
+            <div class="role-btn-arrow">→</div>
+          </div>
+
+          <div class="login-role-btn role-admin" onclick="loginAsRole('admin')">
+            <div class="role-icon-box">🛡️</div>
+            <div class="role-btn-info">
+              <div class="role-btn-title">Administrador</div>
+              <div class="role-btn-sub">Control total, configuraciones y usuarios</div>
+            </div>
+            <div class="role-btn-arrow">→</div>
+          </div>
+        </div>
+
+        <div class="login-or-divider">
+          <span>O ingresá con email y contraseña</span>
+        </div>
+
+        <form onsubmit="handleScreenLogin(event)" class="login-form-fields">
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label style="color: var(--text2); font-size: 11px;">CORREO ELECTRÓNICO</label>
+            <input type="email" id="screen-login-email" class="form-input" placeholder="ej: dueno@agrotrial.com" required/>
+          </div>
+          <div class="form-group" style="margin-bottom: 18px;">
+            <label style="color: var(--text2); font-size: 11px;">CONTRASEÑA</label>
+            <input type="password" id="screen-login-pass" class="form-input" placeholder="••••••••" required/>
+          </div>
+          <button type="submit" class="btn-primary" style="width: 100%; padding: 12px; font-size: 14px; font-weight: 700;">
+            Entrar al Sistema
+          </button>
+        </form>
+      </div>
+
+      <div class="login-footer-info">
+        <span>🔒 Acceso Protegido · AGROTRIAL S.A.</span>
+      </div>
     </div>
+  </div>
+
+  <!-- APLICACIÓN PRINCIPAL (SIDEBAR + CONTENIDO) -->
+  <div id="app-wrapper" class="app-wrapper" style="display: none;">
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <span class="logo-icon">🌾</span>
+        <span class="logo-text">AGROTRIAL</span>
+      </div>
     <nav class="sidebar-nav">
       <a href="#" class="nav-item active" data-page="dashboard" data-roles="admin,dueno,operador" onclick="showPage('dashboard',this)">
         <span class="nav-icon">📊</span><span>Dashboard</span>
@@ -44,13 +114,13 @@
       </a>
     </nav>
     <div class="sidebar-footer">
-      <div class="user-sidebar-card" onclick="openLoginModal()" title="Clic para cambiar de rol o usuario">
+      <div class="user-sidebar-card">
         <span class="user-avatar" id="sidebar-user-avatar">👤</span>
         <div class="user-info-text">
           <div class="user-name-text" id="sidebar-user-name">Usuario</div>
           <div class="user-role-badge" id="sidebar-user-role">Rol</div>
         </div>
-        <span class="user-switch-icon" title="Cambiar usuario">⇄</span>
+        <button class="btn-sidebar-logout" onclick="logout()" title="Cerrar sesión">🚪</button>
       </div>
       <div id="sidebar-date" style="margin-top: 10px; font-size: 11px; opacity: 0.7;"></div>
     </div>
@@ -66,11 +136,14 @@
         <button class="btn-cloud" onclick="openCloudModal()" title="Estado de sincronización y Nube">
           <span class="cloud-dot"></span><span id="cloud-status-text">☁️ Nube</span>
         </button>
-        <div class="user-pill" onclick="openLoginModal()" title="Clic para cambiar de usuario">
+        <div class="user-pill" onclick="openLoginModal()" title="Clic para cambiar de rol">
           <span id="topbar-user-avatar">👤</span>
           <span id="topbar-user-name">Usuario</span>
           <span class="badge" id="topbar-user-badge">Rol</span>
         </div>
+        <button class="btn-logout-top" onclick="logout()" title="Cerrar sesión / Salir del sistema">
+          <span>🚪 Salir</span>
+        </button>
         <span class="badge-year" id="badge-year"></span>
       </div>
     </header>
@@ -466,6 +539,7 @@
     </div>
 
   </main><!-- /main-content -->
+  </div><!-- /app-wrapper -->
 
   <!-- MODAL EDITAR -->
   <div class="modal-overlay" id="modal" onclick="closeModal()">

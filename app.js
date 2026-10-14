@@ -17,11 +17,7 @@ if (!usuarios || !usuarios.length) {
   localStorage.setItem('agrotrial_usuarios', JSON.stringify(usuarios));
 }
 
-let currentUser = JSON.parse(localStorage.getItem('agrotrial_current_user') || 'null');
-if (!currentUser) {
-  currentUser = usuarios.find(u => u.role === 'dueno') || usuarios[0];
-  localStorage.setItem('agrotrial_current_user', JSON.stringify(currentUser));
-}
+let currentUser = JSON.parse(localStorage.getItem('agrotrial_session_user') || 'null');
 
 const ROLES_CONFIG = {
   admin: {
@@ -62,8 +58,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Seed demo data if empty
   if (!ingresos.length && !egresos.length) seedDemoData();
 
-  applyUserRolePermissions();
-  refreshAll();
+  // Verificar si hay sesión activa en el navegador
+  if (currentUser && usuarios.some(u => u.id === currentUser.id && u.active)) {
+    showAppLayout();
+    applyUserRolePermissions();
+    refreshAll();
+  } else {
+    // Si no hay sesión, mostrar la pantalla de Login primero
+    showLoginScreen();
+  }
 });
 
 // ── NAVIGATION ─────────────────────────────────────────
@@ -793,7 +796,74 @@ function applyUserRolePermissions() {
   }
 }
 
-// ── MODAL LOGIN & SWITCH USER ──────────────────────────
+// ── CONTROL DE PANTALLA PRINCIPAL DE LOGIN & SESIÓN ────
+
+function showLoginScreen() {
+  const screen = document.getElementById('login-screen');
+  const appWrapper = document.getElementById('app-wrapper');
+  if (screen) screen.style.display = 'flex';
+  if (appWrapper) appWrapper.style.display = 'none';
+}
+
+function showAppLayout() {
+  const screen = document.getElementById('login-screen');
+  const appWrapper = document.getElementById('app-wrapper');
+  if (screen) screen.style.display = 'none';
+  if (appWrapper) appWrapper.style.display = 'flex';
+}
+
+function loginAsRole(role) {
+  const user = usuarios.find(u => u.role === role && u.active) || usuarios.find(u => u.role === role);
+  if (!user) {
+    showToast('⚠️ No se encontró usuario para este rol');
+    return;
+  }
+  currentUser = user;
+  localStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
+  showAppLayout();
+  applyUserRolePermissions();
+  refreshAll();
+
+  // Redirigir a la interfaz correspondiente del rol
+  const config = ROLES_CONFIG[role] || ROLES_CONFIG.dueno;
+  showPage(config.defaultPage);
+  showToast(`👋 Bienvenido, ${user.name} (${config.title})`);
+}
+
+function handleScreenLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById('screen-login-email').value.trim().toLowerCase();
+  const pass  = document.getElementById('screen-login-pass').value.trim();
+
+  const user = usuarios.find(u => u.email.toLowerCase() === email && u.pass === pass);
+  if (!user) {
+    showToast('❌ Correo o contraseña incorrectos');
+    return;
+  }
+  if (!user.active) {
+    showToast('⚠️ Este usuario está desactivado por el Administrador');
+    return;
+  }
+
+  currentUser = user;
+  localStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
+  showAppLayout();
+  applyUserRolePermissions();
+  refreshAll();
+
+  const config = ROLES_CONFIG[user.role] || ROLES_CONFIG.dueno;
+  showPage(config.defaultPage);
+  showToast(`✅ Sesión iniciada: ${user.name}`);
+}
+
+function logout() {
+  localStorage.removeItem('agrotrial_session_user');
+  currentUser = null;
+  showLoginScreen();
+  showToast('🔒 Sesión cerrada');
+}
+
+// ── MODAL CAMBIO DE ROL / SWITCH USER ──────────────────
 
 function openLoginModal() {
   document.getElementById('modal-login').classList.add('open');
@@ -804,17 +874,8 @@ function closeLoginModal() {
 }
 
 function quickLogin(role) {
-  const user = usuarios.find(u => u.role === role && u.active) || usuarios.find(u => u.role === role);
-  if (!user) {
-    showToast('⚠️ No se encontró usuario para este rol');
-    return;
-  }
-  currentUser = user;
-  save();
-  applyUserRolePermissions();
-  refreshAll();
+  loginAsRole(role);
   closeLoginModal();
-  showToast(`👋 Bienvenido: ${user.name} (${ROLES_CONFIG[role].title})`);
 }
 
 function handleManualLogin(e) {
@@ -833,7 +894,8 @@ function handleManualLogin(e) {
   }
 
   currentUser = user;
-  save();
+  localStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
+  showAppLayout();
   applyUserRolePermissions();
   refreshAll();
   closeLoginModal();
