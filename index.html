@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AGROTRIAL – Sistema Financiero</title>
+  <meta name="description" content="Sistema de gestión financiera y contabilidad para AGROTRIAL. Controla ingresos, egresos y rentabilidad."/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span class="logo-icon">🌾</span>
+      <span class="logo-text">AGROTRIAL</span>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" class="nav-item active" data-page="dashboard" data-roles="admin,dueno,operador" onclick="showPage('dashboard',this)">
+        <span class="nav-icon">📊</span><span>Dashboard</span>
+      </a>
+      <a href="#" class="nav-item" data-page="ingresos" data-roles="admin,dueno,operador" onclick="showPage('ingresos',this)">
+        <span class="nav-icon">💰</span><span>Ingresos</span>
+      </a>
+      <a href="#" class="nav-item" data-page="egresos" data-roles="admin,dueno,operador" onclick="showPage('egresos',this)">
+        <span class="nav-icon">📤</span><span>Egresos</span>
+      </a>
+      <a href="#" class="nav-item" data-page="gastosfijos" data-roles="admin,dueno,operador" onclick="showPage('gastosfijos',this)">
+        <span class="nav-icon">🔒</span><span>Gastos Fijos</span>
+      </a>
+      <a href="#" class="nav-item" data-page="rentabilidad" data-roles="admin,dueno" onclick="showPage('rentabilidad',this)">
+        <span class="nav-icon">📈</span><span>Rentabilidad</span>
+      </a>
+      <a href="#" class="nav-item" data-page="reportes" data-roles="admin,dueno" onclick="showPage('reportes',this)">
+        <span class="nav-icon">📋</span><span>Reportes</span>
+      </a>
+      <a href="#" class="nav-item" data-page="sugerencias" data-roles="admin,dueno,operador" onclick="showPage('sugerencias',this)">
+        <span class="nav-icon">💡</span><span>Sugerencias</span>
+      </a>
+      <a href="#" class="nav-item" data-page="usuarios" data-roles="admin" onclick="showPage('usuarios',this)">
+        <span class="nav-icon">👥</span><span>Usuarios</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-sidebar-card" onclick="openLoginModal()" title="Clic para cambiar de rol o usuario">
+        <span class="user-avatar" id="sidebar-user-avatar">👤</span>
+        <div class="user-info-text">
+          <div class="user-name-text" id="sidebar-user-name">Usuario</div>
+          <div class="user-role-badge" id="sidebar-user-role">Rol</div>
+        </div>
+        <span class="user-switch-icon" title="Cambiar usuario">⇄</span>
+      </div>
+      <div id="sidebar-date" style="margin-top: 10px; font-size: 11px; opacity: 0.7;"></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main-content">
+    <!-- TOPBAR -->
+    <header class="topbar">
+      <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+      <h1 class="page-title" id="page-title">Dashboard</h1>
+      <div class="topbar-actions">
+        <button class="btn-cloud" onclick="openCloudModal()" title="Estado de sincronización y Nube">
+          <span class="cloud-dot"></span><span id="cloud-status-text">☁️ Nube</span>
+        </button>
+        <div class="user-pill" onclick="openLoginModal()" title="Clic para cambiar de usuario">
+          <span id="topbar-user-avatar">👤</span>
+          <span id="topbar-user-name">Usuario</span>
+          <span class="badge" id="topbar-user-badge">Rol</span>
+        </div>
+        <span class="badge-year" id="badge-year"></span>
+      </div>
+    </header>
+
+    <!-- PAGES -->
+    <div id="page-dashboard" class="page active">
+      <div class="kpi-grid">
+        <div class="kpi-card income">
+          <div class="kpi-label">Ingresos Totales</div>
+          <div class="kpi-value" id="kpi-ingresos">$0</div>
+          <div class="kpi-sub" id="kpi-ingresos-mes">Este mes</div>
+        </div>
+        <div class="kpi-card expense">
+          <div class="kpi-label">Egresos Totales</div>
+          <div class="kpi-value" id="kpi-egresos">$0</div>
+          <div class="kpi-sub" id="kpi-egresos-mes">Este mes</div>
+        </div>
+        <div class="kpi-card profit">
+          <div class="kpi-label">Ganancia Neta</div>
+          <div class="kpi-value" id="kpi-ganancia">$0</div>
+          <div class="kpi-sub" id="kpi-margen">Margen: 0%</div>
+        </div>
+        <div class="kpi-card status">
+          <div class="kpi-label">Estado</div>
+          <div class="kpi-value status-text" id="kpi-estado">–</div>
+          <div class="kpi-sub" id="kpi-resultado">Resultado del período</div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Flujo de Caja Mensual</div>
+          <canvas id="chartFlujo"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Distribución de Egresos</div>
+          <canvas id="chartEgresos"></canvas>
+        </div>
+      </div>
+
+      <div class="recent-card">
+        <div class="recent-header">
+          <span>Últimas Transacciones</span>
+          <span class="recent-count" id="recent-count">0 registros</span>
+        </div>
+        <table class="data-table" id="recent-table">
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Monto</th></tr></thead>
+          <tbody id="recent-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- INGRESOS PAGE -->
+    <div id="page-ingresos" class="page">
+      <div class="form-card">
+        <div class="form-title">➕ Nuevo Ingreso</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Fecha</label>
+            <input type="date" id="ing-fecha" class="form-input"/>
+          </div>
+          <div class="form-group">
+            <label>Descripción</label>
+            <input type="text" id="ing-desc" class="form-input" placeholder="Ej: Venta de soja"/>
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="ing-cat" class="form-input">
+              <option>Ventas</option>
+              <option>Servicios</option>
+              <option>Subsidios</option>
+              <option>Arrendamiento</option>
+              <option>Otros</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Cliente / Comprador</label>
+            <input type="text" id="ing-cliente" class="form-input" placeholder="Nombre del cliente"/>
+          </div>
+          <div class="form-group">
+            <label>Monto ($)</label>
+            <input type="number" id="ing-monto" class="form-input" placeholder="0.00" min="0" step="0.01"/>
+          </div>
+          <div class="form-group form-group-btn">
+            <button class="btn-primary" onclick="addIngreso()">Guardar Ingreso</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <input type="text" id="ing-search" class="form-input search-input" placeholder="🔍 Buscar..." oninput="renderIngresos()"/>
+        <select id="ing-filter-cat" class="form-input" onchange="renderIngresos()">
+          <option value="">Todas las categorías</option>
+          <option>Ventas</option><option>Servicios</option>
+          <option>Subsidios</option><option>Arrendamiento</option><option>Otros</option>
+        </select>
+      </div>
+
+      <div class="table-card">
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Acciones</th></tr></thead>
+          <tbody id="ingresos-tbody"></tbody>
+        </table>
+        <div class="table-total">Total: <strong id="ing-total">$0</strong></div>
+      </div>
+    </div>
+
+    <!-- EGRESOS PAGE -->
+    <div id="page-egresos" class="page">
+      <div class="form-card">
+        <div class="form-title">➕ Nuevo Egreso</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Fecha</label>
+            <input type="date" id="egr-fecha" class="form-input"/>
+          </div>
+          <div class="form-group">
+            <label>Descripción</label>
+            <input type="text" id="egr-desc" class="form-input" placeholder="Ej: Compra de semillas"/>
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="egr-cat" class="form-input">
+              <option>Insumos</option>
+              <option>Semillas</option>
+              <option>Agroquímicos</option>
+              <option>Mano de Obra</option>
+              <option>Maquinaria</option>
+              <option>Combustible</option>
+              <option>Administración</option>
+              <option>Impuestos</option>
+              <option>Otros</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Proveedor</label>
+            <input type="text" id="egr-proveedor" class="form-input" placeholder="Nombre del proveedor"/>
+          </div>
+          <div class="form-group">
+            <label>Monto ($)</label>
+            <input type="number" id="egr-monto" class="form-input" placeholder="0.00" min="0" step="0.01"/>
+          </div>
+          <div class="form-group form-group-btn">
+            <button class="btn-danger" onclick="addEgreso()">Guardar Egreso</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <input type="text" id="egr-search" class="form-input search-input" placeholder="🔍 Buscar..." oninput="renderEgresos()"/>
+        <select id="egr-filter-cat" class="form-input" onchange="renderEgresos()">
+          <option value="">Todas las categorías</option>
+          <option>Insumos</option><option>Semillas</option><option>Agroquímicos</option>
+          <option>Mano de Obra</option><option>Maquinaria</option><option>Combustible</option>
+          <option>Administración</option><option>Impuestos</option><option>Otros</option>
+        </select>
+      </div>
+
+      <div class="table-card">
+        <table class="data-table">
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Proveedor</th><th>Monto</th><th>Acciones</th></tr></thead>
+          <tbody id="egresos-tbody"></tbody>
+        </table>
+        <div class="table-total">Total: <strong id="egr-total">$0</strong></div>
+      </div>
+    </div>
+
+    <!-- RENTABILIDAD PAGE -->
+    <div id="page-rentabilidad" class="page">
+      <div class="kpi-grid">
+        <div class="kpi-card income">
+          <div class="kpi-label">Ingresos del Año</div>
+          <div class="kpi-value" id="rent-ingresos">$0</div>
+        </div>
+        <div class="kpi-card expense">
+          <div class="kpi-label">Costos del Año</div>
+          <div class="kpi-value" id="rent-egresos">$0</div>
+        </div>
+        <div class="kpi-card profit">
+          <div class="kpi-label">Resultado Neto</div>
+          <div class="kpi-value" id="rent-neto">$0</div>
+        </div>
+        <div class="kpi-card status">
+          <div class="kpi-label">Margen Neto</div>
+          <div class="kpi-value" id="rent-margen">0%</div>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card chart-full">
+          <div class="chart-title">Rentabilidad Mensual – Ingresos vs Egresos</div>
+          <canvas id="chartRentabilidad"></canvas>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="recent-header"><span>Desglose Mensual</span></div>
+        <table class="data-table">
+          <thead><tr><th>Mes</th><th>Ingresos</th><th>Var. (Egresos)</th><th>🔒 Fijos/mes</th><th>Total Costos</th><th>Resultado</th><th>Margen</th></tr></thead>
+          <tbody id="rent-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- GASTOS FIJOS PAGE -->
+    <div id="page-gastosfijos" class="page">
+      <div class="gf-info-bar">
+        <span class="gf-info-icon">🔒</span>
+        <span>Los <strong>Gastos Fijos</strong> son costos que se repiten automáticamente cada mes (arrendamiento, sueldos, seguros, servicios). Se incluyen en el cálculo de rentabilidad.</span>
+      </div>
+
+      <div class="form-card">
+        <div class="form-title">➕ Nuevo Gasto Fijo</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Descripción</label>
+            <input type="text" id="gf-desc" class="form-input" placeholder="Ej: Arrendamiento campo"/>
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="gf-cat" class="form-input">
+              <option>Arrendamiento</option>
+              <option>Sueldos y Jornales</option>
+              <option>Servicios (Luz/Agua/Gas)</option>
+              <option>Telefonía / Internet</option>
+              <option>Seguros</option>
+              <option>Impuestos Fijos</option>
+              <option>Contador / Administración</option>
+              <option>Cuotas / Préstamos</option>
+              <option>Mantenimiento</option>
+              <option>Otros Fijos</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Frecuencia</label>
+            <select id="gf-frec" class="form-input">
+              <option value="mensual">Mensual</option>
+              <option value="anual">Anual (se divide en 12)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Monto ($)</label>
+            <input type="number" id="gf-monto" class="form-input" placeholder="0.00" min="0" step="0.01"/>
+          </div>
+          <div class="form-group form-group-btn">
+            <button class="btn-warning" onclick="addGastoFijo()">Guardar Gasto Fijo</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="recent-header">
+          <span>Gastos Fijos Registrados</span>
+          <span class="recent-count">Total mensual: <strong id="gf-total-mes">$0</strong></span>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Descripción</th><th>Categoría</th><th>Frecuencia</th><th>Monto</th><th>Costo/Mes</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody id="gf-tbody"></tbody>
+        </table>
+        <div class="table-total">Costo fijo mensual total: <strong id="gf-total-display">$0</strong> &nbsp;|&nbsp; Anual: <strong id="gf-total-anual">$0</strong></div>
+      </div>
+    </div>
+
+    <!-- REPORTES PAGE -->
+    <div id="page-reportes" class="page">
+      <div class="report-actions">
+        <button class="btn-primary" onclick="exportCSV()">📥 Exportar CSV</button>
+        <button class="btn-secondary" onclick="window.print()">🖨️ Imprimir Reporte</button>
+      </div>
+      <div class="report-card" id="report-preview">
+        <div class="report-logo">🌾 AGROTRIAL – Balance General</div>
+        <div class="report-date" id="report-date"></div>
+        <table class="data-table">
+          <thead><tr><th>Concepto</th><th>Monto</th></tr></thead>
+          <tbody id="report-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PAGE SUGERENCIAS (dentro del main para que showPage funcione) -->
+    <div id="page-sugerencias" class="page">
+    <div class="sug-hero">
+      <div class="sug-hero-icon">💡</div>
+      <div>
+        <div class="sug-hero-title">Sugerencias de Módulos</div>
+        <div class="sug-hero-sub">Votá o proponé los módulos que querés ver en AGROTRIAL. Los más votados se desarrollan primero.</div>
+      </div>
+    </div>
+
+    <!-- FORM NUEVA SUGERENCIA -->
+    <div class="form-card">
+      <div class="form-title">✏️ Proponer nuevo módulo</div>
+      <div class="form-grid">
+        <div class="form-group" style="grid-column:span 2">
+          <label>Nombre del módulo</label>
+          <input type="text" id="sug-nombre" class="form-input" placeholder="Ej: Gestión de Stock / Inventario"/>
+        </div>
+        <div class="form-group" style="grid-column:span 2">
+          <label>¿Para qué lo usarías?</label>
+          <input type="text" id="sug-desc" class="form-input" placeholder="Ej: Para controlar las existencias de agroquímicos y semillas"/>
+        </div>
+        <div class="form-group">
+          <label>Categoría</label>
+          <select id="sug-cat" class="form-input">
+            <option>Administración</option>
+            <option>Producción / Campo</option>
+            <option>Finanzas</option>
+            <option>Recursos Humanos</option>
+            <option>Logística</option>
+            <option>Otro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Prioridad personal</label>
+          <select id="sug-prioridad" class="form-input">
+            <option value="alta">🔴 Alta – Lo necesito urgente</option>
+            <option value="media">🟡 Media – Sería muy útil</option>
+            <option value="baja">🟢 Baja – Estaría bueno tenerlo</option>
+          </select>
+        </div>
+        <div class="form-group form-group-btn">
+          <button class="btn-primary" onclick="addSugerencia()">Enviar Sugerencia</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MÓDULOS PRECARGADOS -->
+    <div class="sug-section-title">📦 Módulos disponibles para agregar</div>
+    <div class="sug-grid" id="sug-catalog"></div>
+
+    <!-- SUGERENCIAS DEL USUARIO -->
+    <div class="sug-section-title" id="sug-user-title" style="display:none">💬 Tus Sugerencias</div>
+    <div class="sug-grid" id="sug-user-list"></div>
+    </div><!-- /page-sugerencias -->
+
+    <!-- USUARIOS PAGE (Sólo Administrador) -->
+    <div id="page-usuarios" class="page">
+      <div class="user-management-header">
+        <div class="user-management-icon">👥</div>
+        <div>
+          <h2 style="font-size: 18px; font-weight: 700;">Gestión de Usuarios y Roles</h2>
+          <p style="font-size: 12px; color: var(--text2);">Administrá los accesos al sistema AGROTRIAL. Cada rol tiene su propia interfaz y permisos específicos.</p>
+        </div>
+      </div>
+
+      <div class="form-card">
+        <div class="form-title">➕ Crear Nuevo Usuario</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Nombre y Apellido</label>
+            <input type="text" id="usr-nombre" class="form-input" placeholder="Ej: Juan Pérez"/>
+          </div>
+          <div class="form-group">
+            <label>Email / Usuario</label>
+            <input type="email" id="usr-email" class="form-input" placeholder="juan@agrotrial.com"/>
+          </div>
+          <div class="form-group">
+            <label>Rol Asignado</label>
+            <select id="usr-role" class="form-input">
+              <option value="operador">✍️ Operador de Carga (Ingresos, Egresos, Gastos Fijos)</option>
+              <option value="dueno">👑 Dueño / Dirección (Dashboard, Rentabilidad, Reportes)</option>
+              <option value="admin">🛡️ Administrador (Acceso total + Gestión)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Contraseña</label>
+            <input type="password" id="usr-pass" class="form-input" placeholder="••••••••"/>
+          </div>
+          <div class="form-group form-group-btn">
+            <button class="btn-primary" onclick="addUser()">Crear Usuario</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="recent-header">
+          <span>Usuarios con Acceso a AGROTRIAL</span>
+          <span class="recent-count" id="usr-count">0 usuarios</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Email</th>
+              <th>Rol / Interfaz</th>
+              <th>Estado</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="usuarios-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main><!-- /main-content -->
+
+  <!-- MODAL EDITAR -->
+  <div class="modal-overlay" id="modal" onclick="closeModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-title" id="modal-title">Editar Registro</div>
+      <div class="form-grid" id="modal-form"></div>
+      <div class="modal-actions">
+        <button class="btn-primary" onclick="saveEdit()">Guardar</button>
+        <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL CAMBIO DE USUARIO / LOGIN -->
+  <div class="modal-overlay" id="modal-login" onclick="closeLoginModal()">
+    <div class="modal-box login-box" onclick="event.stopPropagation()">
+      <div class="modal-header-brand">
+        <span class="logo-icon">🌾</span>
+        <h2 style="font-size: 20px; font-weight: 800;">AGROTRIAL Finanzas</h2>
+      </div>
+      <p style="text-align: center; font-size: 13px; color: var(--text2); margin-bottom: 20px;">
+        Seleccioná tu rol para cambiar de interfaz o ingresá con tus credenciales:
+      </p>
+
+      <div class="role-selector-grid">
+        <div class="role-card-select" onclick="quickLogin('dueno')">
+          <div class="role-card-badge">Interfaz Ejecutiva</div>
+          <div class="role-card-icon">👑</div>
+          <div class="role-card-title">Dueño AGROTRIAL</div>
+          <div class="role-card-desc">Rentabilidad neta, márgenes %, dashboard directivo y reportes estratégicos.</div>
+        </div>
+
+        <div class="role-card-select" onclick="quickLogin('operador')">
+          <div class="role-card-badge">Interfaz Operativa</div>
+          <div class="role-card-icon">✍️</div>
+          <div class="role-card-title">Operador de Carga</div>
+          <div class="role-card-desc">Carga rápida de ventas, gastos variables, insumos y gastos fijos mensuales.</div>
+        </div>
+
+        <div class="role-card-select" onclick="quickLogin('admin')">
+          <div class="role-card-badge">Acceso Total</div>
+          <div class="role-card-icon">🛡️</div>
+          <div class="role-card-title">Administrador</div>
+          <div class="role-card-desc">Control integral del sistema, configuración y gestión de usuarios del equipo.</div>
+        </div>
+      </div>
+
+      <div class="login-divider"><span>O ingresá con email y contraseña</span></div>
+
+      <form onsubmit="handleManualLogin(event)" class="login-manual-form">
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label>Email o Usuario</label>
+          <input type="text" id="login-email" class="form-input" placeholder="ej: dueno@agrotrial.com" required/>
+        </div>
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label>Contraseña</label>
+          <input type="password" id="login-pass" class="form-input" placeholder="••••••••" required/>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button type="submit" class="btn-primary" style="flex: 1;">Entrar al Sistema</button>
+          <button type="button" class="btn-secondary" onclick="closeLoginModal()">Cancelar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL CONFIGURACIÓN NUBE Y SINCRONIZACIÓN -->
+  <div class="modal-overlay" id="modal-cloud" onclick="closeCloudModal()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-title">☁️ Conexión y Estado en la Nube</div>
+      <p style="font-size: 13px; color: var(--text2); margin-bottom: 16px;">
+        Este sistema está preparado para funcionar 100% en la nube y sincronizar datos en tiempo real entre el Dueño, el Operador y el Administrador.
+      </p>
+
+      <div class="cloud-info-card">
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--green);">
+          ✅ Despliegue en GitHub Pages / En Línea
+        </div>
+        <div style="font-size: 12px; color: var(--text2); line-height: 1.5;">
+          Una vez subido a GitHub Pages, cada miembro de AGROTRIAL accede desde su celular o PC mediante su enlace web único (ej: <code>https://desfaze.github.io/agrotrial-finanzas/</code>).
+        </div>
+      </div>
+
+      <div class="cloud-info-card" style="margin-top: 12px;">
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--blue);">
+          🔄 Respaldo y Sincronización de Datos
+        </div>
+        <div style="font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 12px;">
+          Podés respaldar o transferir la base de datos completa entre dispositivos con un solo clic:
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button class="btn-primary" onclick="exportDatabaseJSON()">💾 Descargar Respaldo Nube</button>
+          <button class="btn-secondary" onclick="document.getElementById('import-db-input').click()">📥 Cargar Datos de la Nube</button>
+          <input type="file" id="import-db-input" style="display:none" accept=".json" onchange="importDatabaseJSON(event)"/>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top: 20px;">
+        <button class="btn-secondary" onclick="closeCloudModal()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
