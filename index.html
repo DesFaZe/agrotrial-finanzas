@@ -20,57 +20,76 @@
         <p class="login-brand-tagline">Sistema Integral de Finanzas, Costos y Rentabilidad</p>
       </div>
 
-      <div class="login-card-main">
+      <!-- PASO 1: SELECCIONAR ROL -->
+      <div class="login-card-main" id="login-step-roles">
         <div class="login-section-title">
-          <span>Seleccioná tu perfil para ingresar:</span>
+          <span>Seleccioná el rol al que deseás ingresar:</span>
         </div>
 
         <div class="login-roles-grid">
-          <div class="login-role-btn role-dueno" onclick="loginAsRole('dueno')">
-            <div class="role-icon-box">👑</div>
+          <div class="login-role-btn role-administracion" onclick="selectRoleForLogin('administracion')">
+            <div class="role-icon-box">🏛️</div>
             <div class="role-btn-info">
-              <div class="role-btn-title">Dueño / Dirección</div>
-              <div class="role-btn-sub">Márgenes netos, rentabilidad del año y balances</div>
+              <div class="role-btn-title">Administración</div>
+              <div class="role-btn-sub">Rentabilidad neta, márgenes del año y balances</div>
             </div>
             <div class="role-btn-arrow">→</div>
           </div>
 
-          <div class="login-role-btn role-operador" onclick="loginAsRole('operador')">
+          <div class="login-role-btn role-contabilidad" onclick="selectRoleForLogin('contabilidad')">
             <div class="role-icon-box">✍️</div>
             <div class="role-btn-info">
-              <div class="role-btn-title">Operador de Carga</div>
+              <div class="role-btn-title">Contabilidad de Carga</div>
               <div class="role-btn-sub">Carga de ingresos, gastos variables y costos fijos</div>
             </div>
             <div class="role-btn-arrow">→</div>
           </div>
 
-          <div class="login-role-btn role-admin" onclick="loginAsRole('admin')">
+          <div class="login-role-btn role-admin" onclick="selectRoleForLogin('admin')">
             <div class="role-icon-box">🛡️</div>
             <div class="role-btn-info">
-              <div class="role-btn-title">Administrador</div>
-              <div class="role-btn-sub">Control total, configuraciones y usuarios</div>
+              <div class="role-btn-title">Admin</div>
+              <div class="role-btn-sub">Control total, gestión de usuarios y contraseñas</div>
             </div>
             <div class="role-btn-arrow">→</div>
           </div>
         </div>
+      </div>
 
-        <div class="login-or-divider">
-          <span>O ingresá con email y contraseña</span>
+      <!-- PASO 2: PEDIR USUARIO Y CONTRASEÑA DEL ROL SELECCIONADO -->
+      <div class="login-card-main" id="login-step-form" style="display: none;">
+        <div class="login-step-back-bar">
+          <button type="button" class="btn-step-back" onclick="backToRoleSelection()">← Elegir otro rol</button>
+          <span class="badge" id="login-target-role-badge">Rol</span>
         </div>
 
-        <form onsubmit="handleScreenLogin(event)" class="login-form-fields">
+        <div style="text-align: center; margin: 12px 0 16px;">
+          <div style="font-size: 17px; font-weight: 700;" id="login-target-role-title">Ingreso a Administración</div>
+          <div style="font-size: 12px; color: var(--text2);">Ingresá tu usuario y contraseña asignada</div>
+        </div>
+
+        <form onsubmit="handleRoleLoginForm(event)">
           <div class="form-group" style="margin-bottom: 12px;">
-            <label style="color: var(--text2); font-size: 11px;">CORREO ELECTRÓNICO</label>
-            <input type="email" id="screen-login-email" class="form-input" placeholder="ej: dueno@agrotrial.com" required/>
+            <label style="color: var(--text2); font-size: 11px;">USUARIO O CORREO</label>
+            <input type="text" id="role-login-user" class="form-input" placeholder="usuario@agrotrial.com" required/>
           </div>
-          <div class="form-group" style="margin-bottom: 18px;">
+          <div class="form-group" style="margin-bottom: 16px;">
             <label style="color: var(--text2); font-size: 11px;">CONTRASEÑA</label>
-            <input type="password" id="screen-login-pass" class="form-input" placeholder="••••••••" required/>
+            <input type="password" id="role-login-pass" class="form-input" placeholder="••••••••" required/>
           </div>
-          <button type="submit" class="btn-primary" style="width: 100%; padding: 12px; font-size: 14px; font-weight: 700;">
-            Entrar al Sistema
+          <button type="submit" class="btn-primary" style="width: 100%; padding: 12px; font-size: 14px; font-weight: 700; margin-bottom: 14px;">
+            Validar y Entrar
           </button>
         </form>
+
+        <!-- CAJA DE ACCESOS DEMO / SUGERIDOS -->
+        <div class="login-demo-hint-box" id="login-demo-hint">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text2); margin-bottom: 4px;">💡 ACCESO PREDETERMINADO:</div>
+          <div style="font-size: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <span id="demo-hint-text">Cargando...</span>
+            <button type="button" class="btn-autofill" onclick="autoFillDemoCredentials()">Autocompletar</button>
+          </div>
+        </div>
       </div>
 
       <div class="login-footer-info">
@@ -88,25 +107,25 @@
         <span class="logo-text">AGROTRIAL</span>
       </div>
     <nav class="sidebar-nav">
-      <a href="#" class="nav-item active" data-page="dashboard" data-roles="admin,dueno,operador" onclick="showPage('dashboard',this)">
+      <a href="#" class="nav-item active" data-page="dashboard" data-roles="admin,administracion,contabilidad" onclick="showPage('dashboard',this)">
         <span class="nav-icon">📊</span><span>Dashboard</span>
       </a>
-      <a href="#" class="nav-item" data-page="ingresos" data-roles="admin,dueno,operador" onclick="showPage('ingresos',this)">
+      <a href="#" class="nav-item" data-page="ingresos" data-roles="admin,administracion,contabilidad" onclick="showPage('ingresos',this)">
         <span class="nav-icon">💰</span><span>Ingresos</span>
       </a>
-      <a href="#" class="nav-item" data-page="egresos" data-roles="admin,dueno,operador" onclick="showPage('egresos',this)">
+      <a href="#" class="nav-item" data-page="egresos" data-roles="admin,administracion,contabilidad" onclick="showPage('egresos',this)">
         <span class="nav-icon">📤</span><span>Egresos</span>
       </a>
-      <a href="#" class="nav-item" data-page="gastosfijos" data-roles="admin,dueno,operador" onclick="showPage('gastosfijos',this)">
+      <a href="#" class="nav-item" data-page="gastosfijos" data-roles="admin,administracion,contabilidad" onclick="showPage('gastosfijos',this)">
         <span class="nav-icon">🔒</span><span>Gastos Fijos</span>
       </a>
-      <a href="#" class="nav-item" data-page="rentabilidad" data-roles="admin,dueno" onclick="showPage('rentabilidad',this)">
+      <a href="#" class="nav-item" data-page="rentabilidad" data-roles="admin,administracion" onclick="showPage('rentabilidad',this)">
         <span class="nav-icon">📈</span><span>Rentabilidad</span>
       </a>
-      <a href="#" class="nav-item" data-page="reportes" data-roles="admin,dueno" onclick="showPage('reportes',this)">
+      <a href="#" class="nav-item" data-page="reportes" data-roles="admin,administracion" onclick="showPage('reportes',this)">
         <span class="nav-icon">📋</span><span>Reportes</span>
       </a>
-      <a href="#" class="nav-item" data-page="sugerencias" data-roles="admin,dueno,operador" onclick="showPage('sugerencias',this)">
+      <a href="#" class="nav-item" data-page="sugerencias" data-roles="admin,administracion,contabilidad" onclick="showPage('sugerencias',this)">
         <span class="nav-icon">💡</span><span>Sugerencias</span>
       </a>
       <a href="#" class="nav-item" data-page="usuarios" data-roles="admin" onclick="showPage('usuarios',this)">
@@ -503,13 +522,13 @@
           <div class="form-group">
             <label>Rol Asignado</label>
             <select id="usr-role" class="form-input">
-              <option value="operador">✍️ Operador de Carga (Ingresos, Egresos, Gastos Fijos)</option>
-              <option value="dueno">👑 Dueño / Dirección (Dashboard, Rentabilidad, Reportes)</option>
-              <option value="admin">🛡️ Administrador (Acceso total + Gestión)</option>
+              <option value="administracion">🏛️ Administración (Dashboard, Rentabilidad, Reportes)</option>
+              <option value="contabilidad">✍️ Contabilidad de Carga (Ingresos, Egresos, Gastos Fijos)</option>
+              <option value="admin">🛡️ Admin (Acceso total + Gestión)</option>
             </select>
           </div>
           <div class="form-group">
-            <label>Contraseña</label>
+            <label>Contraseña Inicial</label>
             <input type="password" id="usr-pass" class="form-input" placeholder="••••••••"/>
           </div>
           <div class="form-group form-group-btn">
@@ -553,6 +572,24 @@
     </div>
   </div>
 
+  <!-- MODAL RESETEAR CONTRASEÑA (ADMIN) -->
+  <div class="modal-overlay" id="modal-reset-pass" onclick="closeResetPassModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 440px;">
+      <div class="modal-title">🔑 Resetear Contraseña de Usuario</div>
+      <p style="font-size: 13px; color: var(--text2); margin-bottom: 16px;">
+        Asignar nueva contraseña para: <strong id="reset-target-user" style="color: var(--text);">Usuario</strong>
+      </p>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>NUEVA CONTRASEÑA</label>
+        <input type="password" id="reset-new-pass" class="form-input" placeholder="Ingresá la nueva clave" required/>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" onclick="confirmResetPassword()">Guardar Nueva Clave</button>
+        <button class="btn-secondary" onclick="closeResetPassModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL CAMBIO DE USUARIO / LOGIN -->
   <div class="modal-overlay" id="modal-login" onclick="closeLoginModal()">
     <div class="modal-box login-box" onclick="event.stopPropagation()">
@@ -565,25 +602,25 @@
       </p>
 
       <div class="role-selector-grid">
-        <div class="role-card-select" onclick="quickLogin('dueno')">
-          <div class="role-card-badge">Interfaz Ejecutiva</div>
-          <div class="role-card-icon">👑</div>
-          <div class="role-card-title">Dueño AGROTRIAL</div>
-          <div class="role-card-desc">Rentabilidad neta, márgenes %, dashboard directivo y reportes estratégicos.</div>
+        <div class="role-card-select" onclick="quickLogin('administracion')">
+          <div class="role-card-badge">Entorno Directivo</div>
+          <div class="role-card-icon">🏛️</div>
+          <div class="role-card-title">Administración</div>
+          <div class="role-card-desc">Rentabilidad neta, márgenes %, dashboard y balances.</div>
         </div>
 
-        <div class="role-card-select" onclick="quickLogin('operador')">
-          <div class="role-card-badge">Interfaz Operativa</div>
+        <div class="role-card-select" onclick="quickLogin('contabilidad')">
+          <div class="role-card-badge">Entorno Operativo</div>
           <div class="role-card-icon">✍️</div>
-          <div class="role-card-title">Operador de Carga</div>
-          <div class="role-card-desc">Carga rápida de ventas, gastos variables, insumos y gastos fijos mensuales.</div>
+          <div class="role-card-title">Contabilidad de Carga</div>
+          <div class="role-card-desc">Carga rápida de ventas, gastos variables y costos fijos.</div>
         </div>
 
         <div class="role-card-select" onclick="quickLogin('admin')">
           <div class="role-card-badge">Acceso Total</div>
           <div class="role-card-icon">🛡️</div>
-          <div class="role-card-title">Administrador</div>
-          <div class="role-card-desc">Control integral del sistema, configuración y gestión de usuarios del equipo.</div>
+          <div class="role-card-title">Admin</div>
+          <div class="role-card-desc">Control integral, gestión de usuarios y reseteo de claves.</div>
         </div>
       </div>
 
@@ -592,7 +629,7 @@
       <form onsubmit="handleManualLogin(event)" class="login-manual-form">
         <div class="form-group" style="margin-bottom: 12px;">
           <label>Email o Usuario</label>
-          <input type="text" id="login-email" class="form-input" placeholder="ej: dueno@agrotrial.com" required/>
+          <input type="text" id="login-email" class="form-input" placeholder="ej: administracion@agrotrial.com" required/>
         </div>
         <div class="form-group" style="margin-bottom: 16px;">
           <label>Contraseña</label>
@@ -611,7 +648,7 @@
     <div class="modal-box" onclick="event.stopPropagation()">
       <div class="modal-title">☁️ Conexión y Estado en la Nube</div>
       <p style="font-size: 13px; color: var(--text2); margin-bottom: 16px;">
-        Este sistema está preparado para funcionar 100% en la nube y sincronizar datos en tiempo real entre el Dueño, el Operador y el Administrador.
+        Este sistema está preparado para funcionar 100% en la nube y sincronizar datos en tiempo real entre Administración, Contabilidad de Carga y Admin.
       </p>
 
       <div class="cloud-info-card">

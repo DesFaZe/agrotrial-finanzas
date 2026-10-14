@@ -6,13 +6,13 @@ let editMode = null; // { type, id }
 
 // ── USUARIOS Y ROLES ───────────────────────────────────
 const DEFAULT_USERS = [
-  { id: 'u_dueno',    name: 'Dueño AGROTRIAL',       email: 'dueno@agrotrial.com',    role: 'dueno',    pass: '1234',     active: true, avatar: '👑' },
-  { id: 'u_operador', name: 'Operador de Carga',     email: 'operador@agrotrial.com', role: 'operador', pass: '1234',     active: true, avatar: '✍️' },
-  { id: 'u_admin',    name: 'Administrador Sistema', email: 'admin@agrotrial.com',    role: 'admin',    pass: 'admin123', active: true, avatar: '🛡️' }
+  { id: 'u_admin',          name: 'Admin General',            email: 'admin@agrotrial.com',          role: 'admin',          pass: 'admin2026', active: true, avatar: '🛡️' },
+  { id: 'u_administracion', name: 'Administración AGROTRIAL', email: 'administracion@agrotrial.com', role: 'administracion', pass: 'admin123',  active: true, avatar: '🏛️' },
+  { id: 'u_contabilidad',   name: 'Contabilidad de Carga',    email: 'carga@agrotrial.com',          role: 'contabilidad',   pass: 'carga123',  active: true, avatar: '✍️' }
 ];
 
 let usuarios = JSON.parse(localStorage.getItem('agrotrial_usuarios') || 'null');
-if (!usuarios || !usuarios.length) {
+if (!usuarios || !usuarios.length || !usuarios.some(u => u.role === 'administracion')) {
   usuarios = DEFAULT_USERS;
   localStorage.setItem('agrotrial_usuarios', JSON.stringify(usuarios));
 }
@@ -21,25 +21,31 @@ let currentUser = JSON.parse(localStorage.getItem('agrotrial_session_user') || '
 
 const ROLES_CONFIG = {
   admin: {
-    title: 'Administrador',
+    title: 'Admin',
     badge: '🛡️ Admin',
     badgeClass: 'badge-role-admin',
     allowedPages: ['dashboard', 'ingresos', 'egresos', 'gastosfijos', 'rentabilidad', 'reportes', 'sugerencias', 'usuarios'],
-    defaultPage: 'dashboard'
+    defaultPage: 'dashboard',
+    defaultEmail: 'admin@agrotrial.com',
+    defaultPass: 'admin2026'
   },
-  dueno: {
-    title: 'Dueño / Dirección',
-    badge: '👑 Dueño',
-    badgeClass: 'badge-role-dueno',
+  administracion: {
+    title: 'Administración',
+    badge: '🏛️ Administración',
+    badgeClass: 'badge-role-administracion',
     allowedPages: ['dashboard', 'rentabilidad', 'reportes', 'ingresos', 'egresos', 'gastosfijos', 'sugerencias'],
-    defaultPage: 'dashboard'
+    defaultPage: 'dashboard',
+    defaultEmail: 'administracion@agrotrial.com',
+    defaultPass: 'admin123'
   },
-  operador: {
-    title: 'Operador de Carga',
-    badge: '✍️ Operador',
-    badgeClass: 'badge-role-operador',
+  contabilidad: {
+    title: 'Contabilidad de Carga',
+    badge: '✍️ Contabilidad de Carga',
+    badgeClass: 'badge-role-contabilidad',
     allowedPages: ['ingresos', 'egresos', 'gastosfijos', 'dashboard', 'sugerencias'],
-    defaultPage: 'ingresos'
+    defaultPage: 'ingresos',
+    defaultEmail: 'carga@agrotrial.com',
+    defaultPass: 'carga123'
   }
 };
 
@@ -71,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── NAVIGATION ─────────────────────────────────────────
 function showPage(name, el) {
-  const config = ROLES_CONFIG[currentUser ? currentUser.role : 'dueno'] || ROLES_CONFIG.dueno;
+  const config = ROLES_CONFIG[currentUser ? currentUser.role : 'administracion'] || ROLES_CONFIG.administracion;
   if (!config.allowedPages.includes(name)) {
     showToast('⚠️ Tu rol no tiene permisos para ver esta sección');
     return;
@@ -738,7 +744,7 @@ function seedDemoData() {
 // ── SISTEMA MULTI-ROL Y PERMISOS ───────────────────────
 
 function applyUserRolePermissions() {
-  const config = ROLES_CONFIG[currentUser ? currentUser.role : 'dueno'] || ROLES_CONFIG.dueno;
+  const config = ROLES_CONFIG[currentUser ? currentUser.role : 'administracion'] || ROLES_CONFIG.administracion;
 
   // Actualizar topbar
   const topAvatar = document.getElementById('topbar-user-avatar');
@@ -770,15 +776,15 @@ function applyUserRolePermissions() {
     }
   });
 
-  // Ajustes de Dashboard si es operador (protege margen confidencial)
+  // Ajustes de Dashboard si es contabilidad (protege margen confidencial)
   const profitKpi = document.querySelector('.kpi-card.profit');
   const statusKpi = document.querySelector('.kpi-card.status');
-  if (currentUser.role === 'operador') {
+  if (currentUser.role === 'contabilidad' || currentUser.role === 'operador') {
     if (profitKpi) {
       const ganEl = document.getElementById('kpi-ganancia');
       const marEl = document.getElementById('kpi-margen');
       if (ganEl) ganEl.textContent = '🔒 Confidencial';
-      if (marEl) marEl.textContent = 'Acceso Dueño / Admin';
+      if (marEl) marEl.textContent = 'Acceso Administración / Admin';
     }
     if (statusKpi) {
       const estadoEl = document.getElementById('kpi-estado');
@@ -798,11 +804,14 @@ function applyUserRolePermissions() {
 
 // ── CONTROL DE PANTALLA PRINCIPAL DE LOGIN & SESIÓN ────
 
+let selectedLoginRole = 'administracion';
+
 function showLoginScreen() {
   const screen = document.getElementById('login-screen');
   const appWrapper = document.getElementById('app-wrapper');
   if (screen) screen.style.display = 'flex';
   if (appWrapper) appWrapper.style.display = 'none';
+  backToRoleSelection();
 }
 
 function showAppLayout() {
@@ -810,6 +819,91 @@ function showAppLayout() {
   const appWrapper = document.getElementById('app-wrapper');
   if (screen) screen.style.display = 'none';
   if (appWrapper) appWrapper.style.display = 'flex';
+}
+
+function selectRoleForLogin(role) {
+  selectedLoginRole = role;
+  const config = ROLES_CONFIG[role];
+  if (!config) return;
+
+  const stepRoles = document.getElementById('login-step-roles');
+  const stepForm  = document.getElementById('login-step-form');
+  if (stepRoles) stepRoles.style.display = 'none';
+  if (stepForm)  stepForm.style.display  = 'block';
+
+  const badgeEl = document.getElementById('login-target-role-badge');
+  const titleEl = document.getElementById('login-target-role-title');
+  const hintEl  = document.getElementById('demo-hint-text');
+
+  if (badgeEl) {
+    badgeEl.textContent = config.badge;
+    badgeEl.className = `badge ${config.badgeClass}`;
+  }
+  if (titleEl) {
+    titleEl.textContent = `Ingreso a ${config.title}`;
+  }
+  if (hintEl) {
+    hintEl.innerHTML = `<strong>${config.defaultEmail}</strong> / Clave: <code>${config.defaultPass}</code>`;
+  }
+
+  const userInp = document.getElementById('role-login-user');
+  const passInp = document.getElementById('role-login-pass');
+  if (userInp) { userInp.value = ''; userInp.focus(); }
+  if (passInp) { passInp.value = ''; }
+}
+
+function backToRoleSelection() {
+  const stepRoles = document.getElementById('login-step-roles');
+  const stepForm  = document.getElementById('login-step-form');
+  if (stepRoles) stepRoles.style.display = 'block';
+  if (stepForm)  stepForm.style.display  = 'none';
+}
+
+function autoFillDemoCredentials() {
+  const config = ROLES_CONFIG[selectedLoginRole];
+  if (!config) return;
+  const userInp = document.getElementById('role-login-user');
+  const passInp = document.getElementById('role-login-pass');
+  if (userInp) userInp.value = config.defaultEmail;
+  if (passInp) passInp.value = config.defaultPass;
+}
+
+function handleRoleLoginForm(e) {
+  e.preventDefault();
+  const userInput = document.getElementById('role-login-user').value.trim().toLowerCase();
+  const passInput  = document.getElementById('role-login-pass').value.trim();
+
+  const user = usuarios.find(u => 
+    (u.email.toLowerCase() === userInput || u.name.toLowerCase() === userInput) &&
+    u.pass === passInput
+  );
+
+  if (!user) {
+    showToast('❌ Credenciales inválidas. Verificá tu usuario y contraseña');
+    return;
+  }
+
+  if (user.role !== selectedLoginRole) {
+    const userRoleConfig = ROLES_CONFIG[user.role] || { title: user.role };
+    const selectedConfig = ROLES_CONFIG[selectedLoginRole] || { title: selectedLoginRole };
+    showToast(`⚠️ Este usuario pertenece a "${userRoleConfig.title}", no a "${selectedConfig.title}"`);
+    return;
+  }
+
+  if (!user.active) {
+    showToast('⚠️ Este usuario está desactivado por el Administrador');
+    return;
+  }
+
+  currentUser = user;
+  localStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
+  showAppLayout();
+  applyUserRolePermissions();
+  refreshAll();
+
+  const config = ROLES_CONFIG[user.role] || ROLES_CONFIG.administracion;
+  showPage(config.defaultPage);
+  showToast(`👋 ¡Bienvenido al rol ${config.title}, ${user.name}!`);
 }
 
 function loginAsRole(role) {
@@ -824,36 +918,9 @@ function loginAsRole(role) {
   applyUserRolePermissions();
   refreshAll();
 
-  // Redirigir a la interfaz correspondiente del rol
-  const config = ROLES_CONFIG[role] || ROLES_CONFIG.dueno;
+  const config = ROLES_CONFIG[role] || ROLES_CONFIG.administracion;
   showPage(config.defaultPage);
   showToast(`👋 Bienvenido, ${user.name} (${config.title})`);
-}
-
-function handleScreenLogin(e) {
-  e.preventDefault();
-  const email = document.getElementById('screen-login-email').value.trim().toLowerCase();
-  const pass  = document.getElementById('screen-login-pass').value.trim();
-
-  const user = usuarios.find(u => u.email.toLowerCase() === email && u.pass === pass);
-  if (!user) {
-    showToast('❌ Correo o contraseña incorrectos');
-    return;
-  }
-  if (!user.active) {
-    showToast('⚠️ Este usuario está desactivado por el Administrador');
-    return;
-  }
-
-  currentUser = user;
-  localStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
-  showAppLayout();
-  applyUserRolePermissions();
-  refreshAll();
-
-  const config = ROLES_CONFIG[user.role] || ROLES_CONFIG.dueno;
-  showPage(config.defaultPage);
-  showToast(`✅ Sesión iniciada: ${user.name}`);
 }
 
 function logout() {
@@ -861,6 +928,44 @@ function logout() {
   currentUser = null;
   showLoginScreen();
   showToast('🔒 Sesión cerrada');
+}
+
+// ── RESETEO DE CONTRASEÑAS (ADMIN) ────────────────────
+
+let targetResetUserId = null;
+
+function openResetPasswordModal(userId) {
+  const user = usuarios.find(u => u.id === userId);
+  if (!user) return;
+  targetResetUserId = userId;
+  const targetLabel = document.getElementById('reset-target-user');
+  const inputEl     = document.getElementById('reset-new-pass');
+  if (targetLabel) targetLabel.textContent = `${user.name} (${user.email})`;
+  if (inputEl) { inputEl.value = ''; inputEl.focus(); }
+  document.getElementById('modal-reset-pass').classList.add('open');
+}
+
+function closeResetPassModal() {
+  document.getElementById('modal-reset-pass').classList.remove('open');
+  targetResetUserId = null;
+}
+
+function confirmResetPassword() {
+  const newPass = document.getElementById('reset-new-pass').value.trim();
+  if (!newPass) {
+    showToast('⚠️ Ingresá una nueva contraseña válida');
+    return;
+  }
+  const user = usuarios.find(u => u.id === targetResetUserId);
+  if (!user) {
+    showToast('⚠️ Usuario no encontrado');
+    return;
+  }
+  user.pass = newPass;
+  save();
+  closeResetPassModal();
+  renderUsuarios();
+  showToast(`🔑 Contraseña actualizada exitosamente para ${user.name}`);
 }
 
 // ── MODAL CAMBIO DE ROL / SWITCH USER ──────────────────
@@ -922,7 +1027,7 @@ function addUser() {
     return;
   }
 
-  const avatars = { admin: '🛡️', dueno: '👑', operador: '✍️' };
+  const avatars = { admin: '🛡️', administracion: '🏛️', contabilidad: '✍️' };
   usuarios.push({
     id: 'u_' + Date.now(),
     name: nombre,
@@ -974,7 +1079,7 @@ function renderUsuarios() {
   if (countEl) countEl.textContent = `${usuarios.length} usuarios registrados`;
 
   tbody.innerHTML = usuarios.map(u => {
-    const config = ROLES_CONFIG[u.role] || ROLES_CONFIG.dueno;
+    const config = ROLES_CONFIG[u.role] || ROLES_CONFIG.administracion;
     return `
       <tr style="${u.active ? '' : 'opacity:0.45'}">
         <td>
@@ -992,7 +1097,12 @@ function renderUsuarios() {
           </button>
         </td>
         <td>
-          ${u.id !== currentUser.id ? `<button class="action-btn" onclick="deleteUser('${u.id}')" title="Eliminar">🗑️</button>` : '–'}
+          <div style="display:flex; gap:6px; align-items:center;">
+            <button class="action-btn" onclick="openResetPasswordModal('${u.id}')" title="Resetear Contraseña" style="padding: 4px 8px; font-size: 11px; background: rgba(210,153,34,0.15); border: 1px solid rgba(210,153,34,0.4); color: var(--gold); border-radius: 6px; cursor: pointer;">
+              🔑 Clave
+            </button>
+            ${u.id !== currentUser.id ? `<button class="action-btn" onclick="deleteUser('${u.id}')" title="Eliminar">🗑️</button>` : ''}
+          </div>
         </td>
       </tr>
     `;
