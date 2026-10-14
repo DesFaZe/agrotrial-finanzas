@@ -1,85 +1,284 @@
 // ── STATE ──────────────────────────────────────────────
-let ingresos     = JSON.parse(localStorage.getItem('agrotrial_ingresos')     || '[]');
-let egresos      = JSON.parse(localStorage.getItem('agrotrial_egresos')      || '[]');
-let gastosFijos  = JSON.parse(localStorage.getItem('agrotrial_gastosfijos')  || '[]');
-let editMode = null; // { type, id }
+let ingresos    = [];
+let egresos     = [];
+let gastosFijos = [];
+let sugerencias = [];
+let usuarios    = [];
+let editMode    = null;
+let currentUser = JSON.parse(sessionStorage.getItem('agrotrial_session_user') || 'null');
+let periodo     = sessionStorage.getItem('agrotrial_periodo') || 'mes';
+let periodoDia  = sessionStorage.getItem('agrotrial_periodo_dia') || '';
+let dbReady     = false;
 
-// ── USUARIOS Y ROLES ───────────────────────────────────
+const DB_NAME = 'agrotrial_finanzas';
+const DB_VERSION = 1;
+const DB_STORES = ['ingresos', 'egresos', 'gastosfijos', 'usuarios', 'sugerencias', 'meta'];
+
 const DEFAULT_USERS = [
   { id: 'u_admin',          name: 'Admin General',            email: 'admin@agrotrial.com',          role: 'admin',          pass: 'admin2026', active: true, avatar: '🛡️' },
   { id: 'u_administracion', name: 'Administración AGROTRIAL', email: 'administracion@agrotrial.com', role: 'administracion', pass: 'admin123',  active: true, avatar: '🏛️' },
   { id: 'u_contabilidad',   name: 'Contabilidad de Carga',    email: 'carga@agrotrial.com',          role: 'contabilidad',   pass: 'carga123',  active: true, avatar: '✍️' }
 ];
 
-let usuarios = JSON.parse(localStorage.getItem('agrotrial_usuarios') || 'null');
-if (!usuarios || !usuarios.length || !usuarios.some(u => u.role === 'administracion')) {
-  usuarios = DEFAULT_USERS;
-  localStorage.setItem('agrotrial_usuarios', JSON.stringify(usuarios));
-}
-
-let currentUser = JSON.parse(localStorage.getItem('agrotrial_session_user') || 'null');
+const PERIOD_OPTIONS = [
+  { id: 'hoy',     label: 'Hoy' },
+  { id: 'ayer',    label: 'Ayer' },
+  { id: 'dia',     label: 'Por día' },
+  { id: '7d',      label: 'Últimos 7 días' },
+  { id: 'mes',     label: 'Este mes' },
+  { id: 'mes_ant', label: 'Mes anterior' },
+  { id: '3m',      label: 'Últimos 3 meses' },
+  { id: '1a',      label: '1 año' }
+];
 
 const ROLES_CONFIG = {
   admin: {
     title: 'Admin',
-    badge: '🛡️ Admin',
+    badge: 'Admin',
     badgeClass: 'badge-role-admin',
     allowedPages: ['dashboard', 'ingresos', 'egresos', 'gastosfijos', 'rentabilidad', 'reportes', 'sugerencias', 'usuarios'],
-    defaultPage: 'dashboard',
-    defaultEmail: 'admin@agrotrial.com',
-    defaultPass: 'admin2026'
+    defaultPage: 'dashboard'
   },
   administracion: {
     title: 'Administración',
-    badge: '🏛️ Administración',
+    badge: 'Administración',
     badgeClass: 'badge-role-administracion',
     allowedPages: ['dashboard', 'rentabilidad', 'reportes', 'ingresos', 'egresos', 'gastosfijos', 'sugerencias'],
-    defaultPage: 'dashboard',
-    defaultEmail: 'administracion@agrotrial.com',
-    defaultPass: 'admin123'
+    defaultPage: 'dashboard'
   },
   contabilidad: {
     title: 'Contabilidad de Carga',
-    badge: '✍️ Contabilidad de Carga',
+    badge: 'Contabilidad de Carga',
     badgeClass: 'badge-role-contabilidad',
     allowedPages: ['ingresos', 'egresos', 'gastosfijos', 'dashboard', 'sugerencias'],
-    defaultPage: 'ingresos',
-    defaultEmail: 'carga@agrotrial.com',
-    defaultPass: 'carga123'
+    defaultPage: 'ingresos'
   }
 };
 
-// ── INIT ───────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+function openIndexedDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      DB_STORES.forEach(name => {
+        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
+      });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbGetAll(store) {
+  return openIndexedDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => { db.close(); resolve(req.result || []); };
+    req.onerror = () => { db.close(); reject(req.error); };
+  }));
+}
+
+function idbReplaceAll(store, items) {
+  return openIndexedDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    const os = tx.objectStore(store);
+    os.clear();
+    (items || []).forEach(item => {
+      if (item && item.id != null) os.put(item);
+    });
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  }));
+}
+
+function readLocalArray(key) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); }
+  catch { return null; }
+}
+
+async function loadDatabase() {
+  let loadedUsers = await idbGetAll('usuarios');
+  ingresos    = await idbGetAll('ingresos');
+  egresos     = await idbGetAll('egresos');
+  gastosFijos = await idbGetAll('gastosfijos');
+  sugerencias = await idbGetAll('sugerencias');
+
+  const lsIng = readLocalArray('agrotrial_ingresos');
+  const lsEgr = readLocalArray('agrotrial_egresos');
+  const lsGf  = readLocalArray('agrotrial_gastosfijos');
+  const lsSug = readLocalArray('agrotrial_sugerencias');
+  const lsUsr = readLocalArray('agrotrial_usuarios');
+
+  if (!ingresos.length && Array.isArray(lsIng) && lsIng.length) ingresos = lsIng;
+  if (!egresos.length && Array.isArray(lsEgr) && lsEgr.length) egresos = lsEgr;
+  if (!gastosFijos.length && Array.isArray(lsGf) && lsGf.length) gastosFijos = lsGf;
+  if (!sugerencias.length && Array.isArray(lsSug) && lsSug.length) sugerencias = lsSug;
+  if (!loadedUsers.length && Array.isArray(lsUsr) && lsUsr.length) loadedUsers = lsUsr;
+
+  usuarios = loadedUsers.length ? loadedUsers : DEFAULT_USERS;
+  dbReady = true;
+  await persistDB();
+}
+
+async function persistDB() {
+  await Promise.all([
+    idbReplaceAll('ingresos', ingresos),
+    idbReplaceAll('egresos', egresos),
+    idbReplaceAll('gastosfijos', gastosFijos),
+    idbReplaceAll('usuarios', usuarios),
+    idbReplaceAll('sugerencias', sugerencias)
+  ]);
+}
+
+function save() {
+  persistDB().catch(() => showToast('No se pudo guardar en la base de datos'));
+}
+
+function toISODate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function startOfDay(d) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function getPeriodBounds() {
+  const today = startOfDay(new Date());
+  const endToday = toISODate(today);
+  if (periodo === 'hoy') return { start: endToday, end: endToday };
+  if (periodo === 'ayer') {
+    const y = new Date(today); y.setDate(y.getDate() - 1);
+    const iso = toISODate(y);
+    return { start: iso, end: iso };
+  }
+  if (periodo === 'dia') {
+    const iso = periodoDia || endToday;
+    return { start: iso, end: iso };
+  }
+  if (periodo === '7d') {
+    const s = new Date(today); s.setDate(s.getDate() - 6);
+    return { start: toISODate(s), end: endToday };
+  }
+  if (periodo === 'mes') {
+    const s = new Date(today.getFullYear(), today.getMonth(), 1);
+    return { start: toISODate(s), end: endToday };
+  }
+  if (periodo === 'mes_ant') {
+    const s = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const e = new Date(today.getFullYear(), today.getMonth(), 0);
+    return { start: toISODate(s), end: toISODate(e) };
+  }
+  if (periodo === '3m') {
+    const s = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+    return { start: toISODate(s), end: endToday };
+  }
+  if (periodo === '1a') {
+    const s = new Date(today); s.setFullYear(s.getFullYear() - 1);
+    return { start: toISODate(s), end: endToday };
+  }
+  return { start: '0000-01-01', end: endToday };
+}
+
+function inPeriodo(fechaStr) {
+  if (!fechaStr) return false;
+  const { start, end } = getPeriodBounds();
+  return fechaStr >= start && fechaStr <= end;
+}
+
+function ingresosFiltrados() { return ingresos.filter(x => inPeriodo(x.fecha)); }
+function egresosFiltrados()  { return egresos.filter(x => inPeriodo(x.fecha)); }
+
+function monthsCoveredByPeriod() {
+  const { start, end } = getPeriodBounds();
+  const months = new Set();
+  const [ys, ms] = start.split('-').map(Number);
+  const [ye, me] = end.split('-').map(Number);
+  let y = ys, m = ms;
+  while (y < ye || (y === ye && m <= me)) {
+    months.add(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return months.size || 1;
+}
+
+function periodLabel() {
+  return (PERIOD_OPTIONS.find(p => p.id === periodo) || {}).label || 'Período';
+}
+
+function renderPeriodFilters() {
+  const host = document.getElementById('period-filters');
+  if (!host) return;
+  host.innerHTML = PERIOD_OPTIONS.map(p =>
+    `<button type="button" class="period-chip ${periodo === p.id ? 'active' : ''}" data-period="${p.id}">${p.label}</button>`
+  ).join('');
+  host.querySelectorAll('.period-chip').forEach(btn => {
+    btn.onclick = () => setPeriodo(btn.dataset.period);
+  });
+  const dia = document.getElementById('period-dia');
+  if (dia) {
+    dia.hidden = periodo !== 'dia';
+    if (periodo === 'dia') dia.value = periodoDia || toISODate(new Date());
+  }
+}
+
+function setPeriodo(id) {
+  periodo = id;
+  sessionStorage.setItem('agrotrial_periodo', id);
+  if (id === 'dia' && !periodoDia) {
+    periodoDia = toISODate(new Date());
+    sessionStorage.setItem('agrotrial_periodo_dia', periodoDia);
+  }
+  renderPeriodFilters();
+  refreshAll();
+}
+
+function setPeriodoDia(value) {
+  periodo = 'dia';
+  periodoDia = value;
+  sessionStorage.setItem('agrotrial_periodo', 'dia');
+  sessionStorage.setItem('agrotrial_periodo_dia', value);
+  renderPeriodFilters();
+  refreshAll();
+}
+
+document.addEventListener('DOMContentLoaded', () => { bootApp(); });
+
+async function bootApp() {
+  try {
+    await loadDatabase();
+  } catch (err) {
+    usuarios = DEFAULT_USERS.slice();
+    showToast('La base de datos no pudo abrirse. Se usa una sesión temporal.');
+  }
+
   const now = new Date();
-  document.getElementById('badge-year').textContent = now.getFullYear();
+  const yearBadge = document.getElementById('badge-year');
+  if (yearBadge) yearBadge.textContent = now.getFullYear();
   document.getElementById('sidebar-date').textContent = now.toLocaleDateString('es-AR', { weekday:'long', day:'numeric', month:'long' });
   document.getElementById('report-date').textContent  = 'Generado: ' + now.toLocaleDateString('es-AR');
 
-  // Default dates
-  const today = now.toISOString().split('T')[0];
+  const today = toISODate(now);
   document.getElementById('ing-fecha').value  = today;
   document.getElementById('egr-fecha').value  = today;
+  renderPeriodFilters();
 
-  // Seed demo data if empty
-  if (!ingresos.length && !egresos.length) seedDemoData();
-
-  // Verificar si hay sesión activa en el navegador
   if (currentUser && usuarios.some(u => u.id === currentUser.id && u.active)) {
     showAppLayout();
     applyUserRolePermissions();
     refreshAll();
   } else {
-    // Si no hay sesión, mostrar la pantalla de Login primero
+    currentUser = null;
     showLoginScreen();
   }
-});
+}
 
 // ── NAVIGATION ─────────────────────────────────────────
 function showPage(name, el) {
+  closeSidebar();
   const config = ROLES_CONFIG[currentUser ? currentUser.role : 'administracion'] || ROLES_CONFIG.administracion;
   if (!config.allowedPages.includes(name)) {
-    showToast('⚠️ Tu rol no tiene permisos para ver esta sección');
+    showToast('Tu rol no tiene permisos para ver esta sección');
     return;
   }
 
@@ -99,21 +298,23 @@ function showPage(name, el) {
   document.getElementById('page-title').textContent =
     { dashboard:'Dashboard', ingresos:'Ingresos', egresos:'Egresos',
       rentabilidad:'Rentabilidad', gastosfijos:'Gastos Fijos', reportes:'Reportes',
-      sugerencias:'Sugerencias', usuarios:'Gestión de Usuarios' }[name] || name;
+      sugerencias: (currentUser && currentUser.role === 'admin') ? 'Bandeja de sugerencias' : 'Enviar sugerencia',
+      usuarios:'Gestión de Usuarios' }[name] || name;
   refreshAll();
 }
 
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.toggle('open');
+  if (overlay) overlay.classList.toggle('open', sidebar.classList.contains('open'));
 }
 
-// ── SAVE ───────────────────────────────────────────────
-function save() {
-  localStorage.setItem('agrotrial_ingresos',     JSON.stringify(ingresos));
-  localStorage.setItem('agrotrial_egresos',      JSON.stringify(egresos));
-  localStorage.setItem('agrotrial_gastosfijos',  JSON.stringify(gastosFijos));
-  localStorage.setItem('agrotrial_usuarios',     JSON.stringify(usuarios));
-  localStorage.setItem('agrotrial_current_user', JSON.stringify(currentUser));
+function closeSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) sidebar.classList.remove('open');
+  if (overlay) overlay.classList.remove('open');
 }
 
 // ── ADD INGRESO ────────────────────────────────────────
@@ -231,7 +432,7 @@ function closeModal() {
 function renderIngresos() {
   const search = (document.getElementById('ing-search')?.value || '').toLowerCase();
   const catF   = document.getElementById('ing-filter-cat')?.value || '';
-  let data = ingresos.filter(x =>
+  let data = ingresosFiltrados().filter(x =>
     (!search || x.desc.toLowerCase().includes(search) || (x.cliente||'').toLowerCase().includes(search)) &&
     (!catF || x.cat === catF)
   ).sort((a,b) => b.fecha.localeCompare(a.fecha));
@@ -258,7 +459,7 @@ function renderIngresos() {
 function renderEgresos() {
   const search = (document.getElementById('egr-search')?.value || '').toLowerCase();
   const catF   = document.getElementById('egr-filter-cat')?.value || '';
-  let data = egresos.filter(x =>
+  let data = egresosFiltrados().filter(x =>
     (!search || x.desc.toLowerCase().includes(search) || (x.proveedor||'').toLowerCase().includes(search)) &&
     (!catF || x.cat === catF)
   ).sort((a,b) => b.fecha.localeCompare(a.fecha));
@@ -348,20 +549,20 @@ function renderGastosFijos() {
 let chartFlujo = null, chartEgrDist = null, chartRent = null;
 
 function refreshDashboard() {
-  const totalIng  = ingresos.reduce((s,x) => s + x.monto, 0);
-  const totalEgr  = egresos.reduce((s,x)  => s + x.monto, 0);
+  const ingList = ingresosFiltrados();
+  const egrList = egresosFiltrados();
+  const totalIng  = ingList.reduce((s,x) => s + x.monto, 0);
+  const totalEgr  = egrList.reduce((s,x)  => s + x.monto, 0);
   const gfMensual = costoFijoMensual();
-  // Para el período total, usamos 12 meses de gastos fijos acumulados (o los meses con datos)
-  const mesesConDatos = new Set([
-    ...ingresos.map(x => x.fecha.slice(0,7)),
-    ...egresos.map(x  => x.fecha.slice(0,7))
-  ]).size || 1;
+  const mesesConDatos = monthsCoveredByPeriod();
   const totalGF   = gfMensual * mesesConDatos;
   const totalCostos = totalEgr + totalGF;
   const ganancia  = totalIng - totalCostos;
   const margen    = totalIng > 0 ? ((ganancia / totalIng) * 100).toFixed(1) : 0;
+  const rango = periodLabel();
 
   document.getElementById('kpi-ingresos').textContent = fmtMoney(totalIng);
+  document.getElementById('kpi-ingresos-mes').textContent = rango;
   document.getElementById('kpi-egresos').textContent  = fmtMoney(totalCostos);
   document.getElementById('kpi-egresos-mes').textContent = `Variables: ${fmtMoney(totalEgr)} · Fijos: ${fmtMoney(totalGF)}`;
   document.getElementById('kpi-ganancia').textContent = fmtMoney(ganancia);
@@ -373,13 +574,23 @@ function refreshDashboard() {
 
   document.getElementById('kpi-margen').textContent = `Margen neto: ${margen}%`;
 
-  // Recent table
+  if (currentUser && currentUser.role === 'contabilidad') {
+    const ganEl = document.getElementById('kpi-ganancia');
+    const marEl = document.getElementById('kpi-margen');
+    if (ganEl) ganEl.textContent = 'Confidencial';
+    if (marEl) marEl.textContent = 'Visible para Administración / Admin';
+    const estadoEl = document.getElementById('kpi-estado');
+    const resEl = document.getElementById('kpi-resultado');
+    if (estadoEl) { estadoEl.textContent = 'Operativo'; estadoEl.className = 'kpi-value status-text'; }
+    if (resEl) resEl.textContent = 'Perfil de carga';
+  }
+
   const all = [
-    ...ingresos.map(x => ({...x, tipo:'ingreso'})),
-    ...egresos.map(x  => ({...x, tipo:'egreso'}))
+    ...ingList.map(x => ({...x, tipo:'ingreso'})),
+    ...egrList.map(x  => ({...x, tipo:'egreso'}))
   ].sort((a,b) => b.fecha.localeCompare(a.fecha)).slice(0,8);
 
-  document.getElementById('recent-count').textContent = (ingresos.length + egresos.length) + ' registros';
+  document.getElementById('recent-count').textContent = (ingList.length + egrList.length) + ' en ' + rango;
   document.getElementById('recent-tbody').innerHTML = all.map(x => `
     <tr>
       <td>${fmtDate(x.fecha)}</td>
@@ -395,8 +606,8 @@ function refreshDashboard() {
 
 function buildFlujoCaja() {
   const months = last12Months();
-  const ingData = months.map(m => ingresos.filter(x => x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0));
-  const egrData = months.map(m => egresos.filter(x  => x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0));
+  const ingData = months.map(m => ingresosFiltrados().filter(x => x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0));
+  const egrData = months.map(m => egresosFiltrados().filter(x  => x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0));
   const labels  = months.map(m => { const [y,mo]=m.split('-'); return new Date(y,mo-1).toLocaleDateString('es-AR',{month:'short',year:'2-digit'}); });
 
   const ctx = document.getElementById('chartFlujo');
@@ -417,7 +628,7 @@ function buildFlujoCaja() {
 
 function buildEgresosDist() {
   const cats = {};
-  egresos.forEach(x => { cats[x.cat] = (cats[x.cat]||0) + x.monto; });
+  egresosFiltrados().forEach(x => { cats[x.cat] = (cats[x.cat]||0) + x.monto; });
   const labels = Object.keys(cats);
   const data   = Object.values(cats);
 
@@ -440,12 +651,11 @@ function buildEgresosDist() {
 function refreshRentabilidad() {
   const months  = last12Months();
   const gfMes   = costoFijoMensual();
-  const ingYear = ingresos.reduce((s,x)=>s+x.monto,0);
-  const egrYear = egresos.reduce((s,x)=>s+x.monto,0);
-  const mesesConDatos = new Set([
-    ...ingresos.map(x=>x.fecha.slice(0,7)),
-    ...egresos.map(x=>x.fecha.slice(0,7))
-  ]).size || 1;
+  const ingList = ingresosFiltrados();
+  const egrList = egresosFiltrados();
+  const ingYear = ingList.reduce((s,x)=>s+x.monto,0);
+  const egrYear = egrList.reduce((s,x)=>s+x.monto,0);
+  const mesesConDatos = monthsCoveredByPeriod();
   const gfYear  = gfMes * mesesConDatos;
   const costoTotal = egrYear + gfYear;
   const neto    = ingYear - costoTotal;
@@ -457,8 +667,8 @@ function refreshRentabilidad() {
   document.getElementById('rent-margen').textContent   = margen + '%';
 
   const rows = months.map(m => {
-    const ing = ingresos.filter(x=>x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0);
-    const egr = egresos.filter(x=>x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0);
+    const ing = ingList.filter(x=>x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0);
+    const egr = egrList.filter(x=>x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0);
     // Gastos fijos: se aplican si hay algún movimiento en el mes o si hay gastos fijos activos
     const gf  = (ing > 0 || egr > 0) ? gfMes : 0;
     const costoMes = egr + gf;
@@ -505,20 +715,21 @@ function refreshRentabilidad() {
 
 // ── REPORTES ───────────────────────────────────────────
 function refreshReportes() {
-  const totalIng  = ingresos.reduce((s,x)=>s+x.monto,0);
-  const totalEgr  = egresos.reduce((s,x)=>s+x.monto,0);
+  const ingList = ingresosFiltrados();
+  const egrList = egresosFiltrados();
+  const totalIng  = ingList.reduce((s,x)=>s+x.monto,0);
+  const totalEgr  = egrList.reduce((s,x)=>s+x.monto,0);
   const gfMensual = costoFijoMensual();
-  const mesesConDatos = new Set([
-    ...ingresos.map(x=>x.fecha.slice(0,7)),
-    ...egresos.map(x=>x.fecha.slice(0,7))
-  ]).size || 1;
+  const mesesConDatos = monthsCoveredByPeriod();
   const totalGF   = gfMensual * mesesConDatos;
   const totalCostos = totalEgr + totalGF;
   const neto      = totalIng - totalCostos;
   const margen    = totalIng > 0 ? ((neto/totalIng)*100).toFixed(1) : 0;
+  const dateEl = document.getElementById('report-date');
+  if (dateEl) dateEl.textContent = 'Período: ' + periodLabel() + ' · Generado: ' + new Date().toLocaleDateString('es-AR');
 
   const cats = {};
-  egresos.forEach(x => { cats[x.cat] = (cats[x.cat]||0) + x.monto; });
+  egrList.forEach(x => { cats[x.cat] = (cats[x.cat]||0) + x.monto; });
   const gfCats = {};
   gastosFijos.filter(g=>g.activo).forEach(g => {
     const v = g.frec === 'anual' ? g.monto / 12 * mesesConDatos : g.monto * mesesConDatos;
@@ -579,110 +790,126 @@ function refreshAll() {
 }
 
 // ── SUGERENCIAS ─────────────────────────────────────────
-let sugerencias = JSON.parse(localStorage.getItem('agrotrial_sugerencias') || '[]');
-
-const CATALOG = [
-  { id:'c1',  icon:'📦', nombre:'Gestión de Stock / Inventario',     desc:'Control de insumos, semillas, agroquímicos y herramientas en existencia.',       cat:'Producción / Campo', votos:0, estado:'sugerido' },
-  { id:'c2',  icon:'🌱', nombre:'Gestión de Cultivos / Lotes',        desc:'Seguimiento de cada lote: siembra, labores, cosecha y rendimiento por hectárea.', cat:'Producción / Campo', votos:0, estado:'sugerido' },
-  { id:'c3',  icon:'👷', nombre:'Recursos Humanos / Personal',        desc:'Control de empleados, jornales, liquidación de sueldos y asistencia.',            cat:'Recursos Humanos',  votos:0, estado:'sugerido' },
-  { id:'c4',  icon:'🏪', nombre:'Gestión de Proveedores',             desc:'Registro de proveedores, historial de compras y condiciones de pago.',            cat:'Administración',    votos:0, estado:'sugerido' },
-  { id:'c5',  icon:'🚜', nombre:'Maquinaria y Mantenimiento',         desc:'Control de flota, historial de reparaciones, costos y vencimiento de revisiones.', cat:'Logística',         votos:0, estado:'sugerido' },
-  { id:'c6',  icon:'📅', nombre:'Planificación de Campaña',           desc:'Planificá la campaña por lote: fechas, presupuesto estimado y objetivo.',         cat:'Producción / Campo', votos:0, estado:'sugerido' },
-  { id:'c7',  icon:'💳', nombre:'Cuentas Corrientes / Deudores',     desc:'Seguimiento de clientes con cuenta corriente, saldo y vencimientos.',             cat:'Finanzas',          votos:0, estado:'sugerido' },
-  { id:'c8',  icon:'🌦️', nombre:'Registro de Lluvias y Clima',       desc:'Registro manual o automático de precipitaciones por lote o zona.',               cat:'Producción / Campo', votos:0, estado:'sugerido' },
-  { id:'c9',  icon:'📊', nombre:'Presupuestos y Proyecciones',        desc:'Creá presupuestos por campaña y compará contra lo ejecutado.',                    cat:'Finanzas',          votos:0, estado:'sugerido' },
-  { id:'c10', icon:'🧾', nombre:'Facturación / Comprobantes',         desc:'Emisión y registro de facturas, remitos y recibos de pago.',                      cat:'Administración',    votos:0, estado:'sugerido' },
-];
-
-// Merge votos guardados en catalog
-function getCatalogVotos() {
-  const saved = JSON.parse(localStorage.getItem('agrotrial_catalog_votos') || '{}');
-  return CATALOG.map(c => ({ ...c, votos: saved[c.id] || 0, votado: !!saved[c.id + '_votado'] }));
-}
-
-function votarCatalog(id) {
-  const saved  = JSON.parse(localStorage.getItem('agrotrial_catalog_votos') || '{}');
-  const key    = id + '_votado';
-  if (saved[key]) { showToast('Ya votaste este módulo'); return; }
-  saved[id]  = (saved[id] || 0) + 1;
-  saved[key] = true;
-  localStorage.setItem('agrotrial_catalog_votos', JSON.stringify(saved));
-  renderSugerencias();
-  showToast('✅ Voto registrado');
-}
+const ESTADO_SUG = {
+  pendiente: 'Pendiente',
+  recibida: 'Recibida',
+  proceso: 'En proceso',
+  hecha: 'Hecha'
+};
 
 function addSugerencia() {
   const nombre    = document.getElementById('sug-nombre').value.trim();
   const desc      = document.getElementById('sug-desc').value.trim();
   const cat       = document.getElementById('sug-cat').value;
   const prioridad = document.getElementById('sug-prioridad').value;
-  if (!nombre) { showToast('⚠️ Ingresá el nombre del módulo'); return; }
-  sugerencias.push({ id: Date.now(), nombre, desc, cat, prioridad, votos: 1, fecha: new Date().toLocaleDateString('es-AR') });
-  localStorage.setItem('agrotrial_sugerencias', JSON.stringify(sugerencias));
+  if (!nombre) { showToast('Ingresá el nombre del módulo'); return; }
+  sugerencias.push({
+    id: Date.now(),
+    nombre,
+    desc,
+    cat,
+    prioridad,
+    estado: 'pendiente',
+    autor: currentUser ? currentUser.name : 'Usuario',
+    autorId: currentUser ? currentUser.id : '',
+    fecha: toISODate(new Date())
+  });
+  save();
   document.getElementById('sug-nombre').value = '';
   document.getElementById('sug-desc').value   = '';
   renderSugerencias();
-  showToast('💡 Sugerencia enviada. ¡Gracias!');
+  showToast('Sugerencia enviada al administrador');
 }
 
-function votarSugerencia(id) {
+function setEstadoSugerencia(id, estado) {
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Solo el administrador puede recepcionar sugerencias');
+    return;
+  }
   const s = sugerencias.find(x => x.id === id);
-  if (s) { s.votos = (s.votos || 1) + 1; localStorage.setItem('agrotrial_sugerencias', JSON.stringify(sugerencias)); renderSugerencias(); showToast('👍 Voto registrado'); }
+  if (!s) return;
+  s.estado = estado;
+  save();
+  renderSugerencias();
+  showToast('Estado actualizado: ' + ESTADO_SUG[estado]);
 }
 
 function deleteSugerencia(id) {
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Solo el administrador puede quitar sugerencias de la bandeja');
+    return;
+  }
   sugerencias = sugerencias.filter(x => x.id !== id);
-  localStorage.setItem('agrotrial_sugerencias', JSON.stringify(sugerencias));
+  save();
   renderSugerencias();
 }
 
-const PRIORIDAD_LABEL = { alta:'🔴 Alta', media:'🟡 Media', baja:'🟢 Baja' };
+const PRIORIDAD_LABEL = { alta: 'Alta', media: 'Media', baja: 'Baja' };
+
+function sugCardHtml(s, admin) {
+  const estado = s.estado || 'pendiente';
+  const actions = admin ? `
+    <div class="sug-card-vote">
+      <button class="vote-btn" onclick="setEstadoSugerencia(${s.id}, 'recibida')">Recibir</button>
+      <button class="vote-btn" onclick="setEstadoSugerencia(${s.id}, 'proceso')">En proceso</button>
+      <button class="vote-btn" onclick="setEstadoSugerencia(${s.id}, 'hecha')">Hecha</button>
+      <button class="action-btn" onclick="deleteSugerencia(${s.id})" title="Quitar">✕</button>
+    </div>` : `
+    <div class="sug-card-vote">
+      <div class="sug-estado sugerido">${ESTADO_SUG[estado] || estado}</div>
+    </div>`;
+  return `
+    <div class="sug-card user-sug">
+      <div class="sug-card-body">
+        <div class="sug-card-name">${s.nombre}</div>
+        <div class="sug-card-desc">${s.desc || 'Sin descripción'}</div>
+        <div class="sug-card-meta">
+          <span class="badge badge-fixed">${s.cat}</span>
+          <span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text2)">${PRIORIDAD_LABEL[s.prioridad]||''}</span>
+          <span style="font-size:11px;color:var(--text2)">${s.autor || ''} · ${s.fecha || ''}</span>
+        </div>
+      </div>
+      ${actions}
+    </div>`;
+}
 
 function renderSugerencias() {
-  const catalog = document.getElementById('sug-catalog');
+  const inbox = document.getElementById('sug-inbox');
+  const inboxTitle = document.getElementById('sug-inbox-title');
   const userList = document.getElementById('sug-user-list');
   const userTitle = document.getElementById('sug-user-title');
-  if (!catalog) return;
+  const formCard = document.getElementById('sug-form-card');
+  const heroTitle = document.getElementById('sug-hero-title');
+  const heroSub = document.getElementById('sug-hero-sub');
+  const navLabel = document.getElementById('nav-sug-label');
+  if (!inbox || !userList) return;
 
-  const items = getCatalogVotos().sort((a,b) => b.votos - a.votos);
-  catalog.innerHTML = items.map(c => `
-    <div class="sug-card ${c.votado ? 'voted' : ''}">
-      <div class="sug-card-icon">${c.icon}</div>
-      <div class="sug-card-body">
-        <div class="sug-card-name">${c.nombre}</div>
-        <div class="sug-card-desc">${c.desc}</div>
-        <div class="sug-card-meta"><span class="badge badge-fixed">${c.cat}</span></div>
-      </div>
-      <div class="sug-card-vote">
-        <button class="vote-btn ${c.votado ? 'voted' : ''}" onclick="votarCatalog('${c.id}')">
-          👍 <span>${c.votos}</span>
-        </button>
-        <div class="sug-estado sugerido">Sugerido</div>
-      </div>
-    </div>`).join('');
+  const isAdmin = currentUser && currentUser.role === 'admin';
+  if (navLabel) navLabel.textContent = isAdmin ? 'Bandeja' : 'Enviar sugerencia';
+  if (heroTitle) heroTitle.textContent = isAdmin ? 'Bandeja de sugerencias' : 'Enviar sugerencia';
+  if (heroSub) heroSub.textContent = isAdmin
+    ? 'Recepcioná las propuestas del equipo y actualizá su estado.'
+    : 'El administrador recibe tus propuestas y las gestiona desde su bandeja.';
+  if (formCard) formCard.style.display = isAdmin ? 'none' : 'block';
 
-  if (sugerencias.length) {
-    userTitle.style.display = 'block';
-    userList.innerHTML = sugerencias.sort((a,b) => b.votos - a.votos).map(s => `
-      <div class="sug-card user-sug">
-        <div class="sug-card-icon">💬</div>
-        <div class="sug-card-body">
-          <div class="sug-card-name">${s.nombre}</div>
-          <div class="sug-card-desc">${s.desc || 'Sin descripción'}</div>
-          <div class="sug-card-meta">
-            <span class="badge badge-fixed">${s.cat}</span>
-            <span class="badge" style="background:rgba(255,255,255,0.05);color:var(--text2)">${PRIORIDAD_LABEL[s.prioridad]||''}</span>
-            <span style="font-size:11px;color:var(--text2)">Enviado: ${s.fecha||''}</span>
-          </div>
-        </div>
-        <div class="sug-card-vote">
-          <button class="vote-btn" onclick="votarSugerencia(${s.id})">👍 <span>${s.votos}</span></button>
-          <button class="action-btn" onclick="deleteSugerencia(${s.id})" title="Eliminar">🗑️</button>
-        </div>
-      </div>`).join('');
-  } else {
+  if (isAdmin) {
+    inboxTitle.style.display = 'block';
     userTitle.style.display = 'none';
     userList.innerHTML = '';
+    inbox.innerHTML = sugerencias.length
+      ? sugerencias.slice().sort((a,b) => String(b.fecha).localeCompare(String(a.fecha))).map(s => sugCardHtml(s, true)).join('')
+      : '<p style="color:var(--text2);font-size:13px">No hay sugerencias todavía.</p>';
+  } else {
+    inboxTitle.style.display = 'none';
+    inbox.innerHTML = '';
+    const mias = sugerencias.filter(s => currentUser && s.autorId === currentUser.id);
+    if (mias.length) {
+      userTitle.style.display = 'block';
+      userList.innerHTML = mias.map(s => sugCardHtml(s, false)).join('');
+    } else {
+      userTitle.style.display = 'none';
+      userList.innerHTML = '';
+    }
   }
 }
 
@@ -724,23 +951,6 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// ── DEMO DATA ──────────────────────────────────────────
-function seedDemoData() {
-  const year = new Date().getFullYear();
-  const months = ['01','02','03','04','05'];
-  const ingCats = ['Ventas','Ventas','Servicios','Arrendamiento'];
-  const egrCats = ['Insumos','Semillas','Agroquímicos','Mano de Obra','Combustible'];
-
-  months.forEach(mo => {
-    ingresos.push({ id: Date.now() + Math.random(), fecha:`${year}-${mo}-10`, desc:'Venta de granos', cat:'Ventas', cliente:'AcoPio Sur', monto: 800000 + Math.random()*400000 });
-    ingresos.push({ id: Date.now() + Math.random(), fecha:`${year}-${mo}-20`, desc:'Servicio de siembra', cat:'Servicios', cliente:'Estancia La Paz', monto: 150000 + Math.random()*100000 });
-    egresos.push({ id: Date.now() + Math.random(), fecha:`${year}-${mo}-05`, desc:'Compra de semillas', cat:'Semillas', proveedor:'AgroSeed', monto: 120000 + Math.random()*80000 });
-    egresos.push({ id: Date.now() + Math.random(), fecha:`${year}-${mo}-15`, desc:'Agroquímicos herbicidas', cat:'Agroquímicos', proveedor:'Bayer', monto: 200000 + Math.random()*100000 });
-    egresos.push({ id: Date.now() + Math.random(), fecha:`${year}-${mo}-25`, desc:'Combustible maquinaria', cat:'Combustible', proveedor:'YPF', monto: 80000 + Math.random()*40000 });
-  });
-  save();
-}
-
 // ── SISTEMA MULTI-ROL Y PERMISOS ───────────────────────
 
 function applyUserRolePermissions() {
@@ -764,6 +974,9 @@ function applyUserRolePermissions() {
   if (sideAvatar) sideAvatar.textContent = currentUser.avatar || '👤';
   if (sideName)   sideName.textContent   = currentUser.name;
   if (sideRole)   sideRole.textContent   = config.title;
+
+  const navSug = document.getElementById('nav-sug-label');
+  if (navSug) navSug.textContent = currentUser.role === 'admin' ? 'Bandeja' : 'Enviar sugerencia';
 
   // Filtrar nav items del sidebar según data-roles
   document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
@@ -802,16 +1015,15 @@ function applyUserRolePermissions() {
   }
 }
 
-// ── CONTROL DE PANTALLA PRINCIPAL DE LOGIN & SESIÓN ────
-
-let selectedLoginRole = 'administracion';
-
 function showLoginScreen() {
   const screen = document.getElementById('login-screen');
   const appWrapper = document.getElementById('app-wrapper');
   if (screen) screen.style.display = 'flex';
   if (appWrapper) appWrapper.style.display = 'none';
-  backToRoleSelection();
+  const userInp = document.getElementById('role-login-user');
+  const passInp = document.getElementById('role-login-pass');
+  if (userInp) userInp.value = '';
+  if (passInp) passInp.value = '';
 }
 
 function showAppLayout() {
@@ -821,113 +1033,41 @@ function showAppLayout() {
   if (appWrapper) appWrapper.style.display = 'flex';
 }
 
-function selectRoleForLogin(role) {
-  selectedLoginRole = role;
-  const config = ROLES_CONFIG[role];
-  if (!config) return;
-
-  const stepRoles = document.getElementById('login-step-roles');
-  const stepForm  = document.getElementById('login-step-form');
-  if (stepRoles) stepRoles.style.display = 'none';
-  if (stepForm)  stepForm.style.display  = 'block';
-
-  const badgeEl = document.getElementById('login-target-role-badge');
-  const titleEl = document.getElementById('login-target-role-title');
-  const hintEl  = document.getElementById('demo-hint-text');
-
-  if (badgeEl) {
-    badgeEl.textContent = config.badge;
-    badgeEl.className = `badge ${config.badgeClass}`;
-  }
-  if (titleEl) {
-    titleEl.textContent = `Ingreso a ${config.title}`;
-  }
-  if (hintEl) {
-    hintEl.innerHTML = `<strong>${config.defaultEmail}</strong> / Clave: <code>${config.defaultPass}</code>`;
-  }
-
-  const userInp = document.getElementById('role-login-user');
-  const passInp = document.getElementById('role-login-pass');
-  if (userInp) { userInp.value = ''; userInp.focus(); }
-  if (passInp) { passInp.value = ''; }
-}
-
-function backToRoleSelection() {
-  const stepRoles = document.getElementById('login-step-roles');
-  const stepForm  = document.getElementById('login-step-form');
-  if (stepRoles) stepRoles.style.display = 'block';
-  if (stepForm)  stepForm.style.display  = 'none';
-}
-
-function autoFillDemoCredentials() {
-  const config = ROLES_CONFIG[selectedLoginRole];
-  if (!config) return;
-  const userInp = document.getElementById('role-login-user');
-  const passInp = document.getElementById('role-login-pass');
-  if (userInp) userInp.value = config.defaultEmail;
-  if (passInp) passInp.value = config.defaultPass;
-}
-
-function handleRoleLoginForm(e) {
+function handleLogin(e) {
   e.preventDefault();
   const userInput = document.getElementById('role-login-user').value.trim().toLowerCase();
   const passInput  = document.getElementById('role-login-pass').value.trim();
 
-  const user = usuarios.find(u => 
+  const user = usuarios.find(u =>
     (u.email.toLowerCase() === userInput || u.name.toLowerCase() === userInput) &&
     u.pass === passInput
   );
 
   if (!user) {
-    showToast('❌ Credenciales inválidas. Verificá tu usuario y contraseña');
+    showToast('Usuario o contraseña incorrectos');
     return;
   }
-
-  if (user.role !== selectedLoginRole) {
-    const userRoleConfig = ROLES_CONFIG[user.role] || { title: user.role };
-    const selectedConfig = ROLES_CONFIG[selectedLoginRole] || { title: selectedLoginRole };
-    showToast(`⚠️ Este usuario pertenece a "${userRoleConfig.title}", no a "${selectedConfig.title}"`);
-    return;
-  }
-
   if (!user.active) {
-    showToast('⚠️ Este usuario está desactivado por el Administrador');
+    showToast('Este usuario está desactivado');
     return;
   }
 
   currentUser = user;
-  localStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
+  sessionStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
   showAppLayout();
   applyUserRolePermissions();
   refreshAll();
 
   const config = ROLES_CONFIG[user.role] || ROLES_CONFIG.administracion;
   showPage(config.defaultPage);
-  showToast(`👋 ¡Bienvenido al rol ${config.title}, ${user.name}!`);
-}
-
-function loginAsRole(role) {
-  const user = usuarios.find(u => u.role === role && u.active) || usuarios.find(u => u.role === role);
-  if (!user) {
-    showToast('⚠️ No se encontró usuario para este rol');
-    return;
-  }
-  currentUser = user;
-  localStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
-  showAppLayout();
-  applyUserRolePermissions();
-  refreshAll();
-
-  const config = ROLES_CONFIG[role] || ROLES_CONFIG.administracion;
-  showPage(config.defaultPage);
-  showToast(`👋 Bienvenido, ${user.name} (${config.title})`);
+  showToast('Sesión iniciada');
 }
 
 function logout() {
-  localStorage.removeItem('agrotrial_session_user');
+  sessionStorage.removeItem('agrotrial_session_user');
   currentUser = null;
   showLoginScreen();
-  showToast('🔒 Sesión cerrada');
+  showToast('Sesión cerrada');
 }
 
 // ── RESETEO DE CONTRASEÑAS (ADMIN) ────────────────────
@@ -966,47 +1106,6 @@ function confirmResetPassword() {
   closeResetPassModal();
   renderUsuarios();
   showToast(`🔑 Contraseña actualizada exitosamente para ${user.name}`);
-}
-
-// ── MODAL CAMBIO DE ROL / SWITCH USER ──────────────────
-
-function openLoginModal() {
-  document.getElementById('modal-login').classList.add('open');
-}
-
-function closeLoginModal() {
-  document.getElementById('modal-login').classList.remove('open');
-}
-
-function quickLogin(role) {
-  loginAsRole(role);
-  closeLoginModal();
-}
-
-function handleManualLogin(e) {
-  e.preventDefault();
-  const email = document.getElementById('login-email').value.trim().toLowerCase();
-  const pass  = document.getElementById('login-pass').value.trim();
-
-  const user = usuarios.find(u => u.email.toLowerCase() === email && u.pass === pass);
-  if (!user) {
-    showToast('❌ Credenciales inválidas. Verificá email y contraseña');
-    return;
-  }
-  if (!user.active) {
-    showToast('⚠️ Este usuario está desactivado por el Administrador');
-    return;
-  }
-
-  currentUser = user;
-  localStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
-  showAppLayout();
-  applyUserRolePermissions();
-  refreshAll();
-  closeLoginModal();
-  document.getElementById('login-email').value = '';
-  document.getElementById('login-pass').value = '';
-  showToast(`✅ Sesión iniciada: ${user.name}`);
 }
 
 // ── GESTIÓN DE USUARIOS (ADMIN) ────────────────────────
@@ -1112,6 +1211,12 @@ function renderUsuarios() {
 // ── NUBE Y SINCRONIZACIÓN ──────────────────────────────
 
 function openCloudModal() {
+  const el = document.getElementById('db-status-text');
+  if (el) {
+    el.textContent = dbReady
+      ? `IndexedDB activa en este navegador. ${ingresos.length} ingresos, ${egresos.length} egresos, ${gastosFijos.length} gastos fijos, ${usuarios.length} usuarios, ${sugerencias.length} sugerencias.`
+      : 'La base de datos todavía no está lista.';
+  }
   document.getElementById('modal-cloud').classList.add('open');
 }
 

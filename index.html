@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
   <title>AGROTRIAL – Sistema Financiero</title>
   <meta name="description" content="Sistema de gestión financiera y contabilidad para AGROTRIAL. Controla ingresos, egresos y rentabilidad."/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -20,76 +20,23 @@
         <p class="login-brand-tagline">Sistema Integral de Finanzas, Costos y Rentabilidad</p>
       </div>
 
-      <!-- PASO 1: SELECCIONAR ROL -->
-      <div class="login-card-main" id="login-step-roles">
+      <div class="login-card-main" id="login-step-form">
         <div class="login-section-title">
-          <span>Seleccioná el rol al que deseás ingresar:</span>
+          <span>Ingresá con tu usuario asignado</span>
         </div>
-
-        <div class="login-roles-grid">
-          <div class="login-role-btn role-administracion" onclick="selectRoleForLogin('administracion')">
-            <div class="role-icon-box">🏛️</div>
-            <div class="role-btn-info">
-              <div class="role-btn-title">Administración</div>
-              <div class="role-btn-sub">Rentabilidad neta, márgenes del año y balances</div>
-            </div>
-            <div class="role-btn-arrow">→</div>
-          </div>
-
-          <div class="login-role-btn role-contabilidad" onclick="selectRoleForLogin('contabilidad')">
-            <div class="role-icon-box">✍️</div>
-            <div class="role-btn-info">
-              <div class="role-btn-title">Contabilidad de Carga</div>
-              <div class="role-btn-sub">Carga de ingresos, gastos variables y costos fijos</div>
-            </div>
-            <div class="role-btn-arrow">→</div>
-          </div>
-
-          <div class="login-role-btn role-admin" onclick="selectRoleForLogin('admin')">
-            <div class="role-icon-box">🛡️</div>
-            <div class="role-btn-info">
-              <div class="role-btn-title">Admin</div>
-              <div class="role-btn-sub">Control total, gestión de usuarios y contraseñas</div>
-            </div>
-            <div class="role-btn-arrow">→</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- PASO 2: PEDIR USUARIO Y CONTRASEÑA DEL ROL SELECCIONADO -->
-      <div class="login-card-main" id="login-step-form" style="display: none;">
-        <div class="login-step-back-bar">
-          <button type="button" class="btn-step-back" onclick="backToRoleSelection()">← Elegir otro rol</button>
-          <span class="badge" id="login-target-role-badge">Rol</span>
-        </div>
-
-        <div style="text-align: center; margin: 12px 0 16px;">
-          <div style="font-size: 17px; font-weight: 700;" id="login-target-role-title">Ingreso a Administración</div>
-          <div style="font-size: 12px; color: var(--text2);">Ingresá tu usuario y contraseña asignada</div>
-        </div>
-
-        <form onsubmit="handleRoleLoginForm(event)">
+        <form onsubmit="handleLogin(event)">
           <div class="form-group" style="margin-bottom: 12px;">
-            <label style="color: var(--text2); font-size: 11px;">USUARIO O CORREO</label>
-            <input type="text" id="role-login-user" class="form-input" placeholder="usuario@agrotrial.com" required/>
+            <label for="role-login-user">Usuario o correo</label>
+            <input type="text" id="role-login-user" class="form-input" autocomplete="username" inputmode="email" autocapitalize="none" required/>
           </div>
           <div class="form-group" style="margin-bottom: 16px;">
-            <label style="color: var(--text2); font-size: 11px;">CONTRASEÑA</label>
-            <input type="password" id="role-login-pass" class="form-input" placeholder="••••••••" required/>
+            <label for="role-login-pass">Contraseña</label>
+            <input type="password" id="role-login-pass" class="form-input" autocomplete="current-password" required/>
           </div>
-          <button type="submit" class="btn-primary" style="width: 100%; padding: 12px; font-size: 14px; font-weight: 700; margin-bottom: 14px;">
-            Validar y Entrar
+          <button type="submit" class="btn-primary btn-login-submit">
+            Entrar
           </button>
         </form>
-
-        <!-- CAJA DE ACCESOS DEMO / SUGERIDOS -->
-        <div class="login-demo-hint-box" id="login-demo-hint">
-          <div style="font-size: 11px; font-weight: 700; color: var(--text2); margin-bottom: 4px;">💡 ACCESO PREDETERMINADO:</div>
-          <div style="font-size: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-            <span id="demo-hint-text">Cargando...</span>
-            <button type="button" class="btn-autofill" onclick="autoFillDemoCredentials()">Autocompletar</button>
-          </div>
-        </div>
       </div>
 
       <div class="login-footer-info">
@@ -100,6 +47,7 @@
 
   <!-- APLICACIÓN PRINCIPAL (SIDEBAR + CONTENIDO) -->
   <div id="app-wrapper" class="app-wrapper" style="display: none;">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
     <!-- SIDEBAR -->
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-logo">
@@ -126,7 +74,7 @@
         <span class="nav-icon">📋</span><span>Reportes</span>
       </a>
       <a href="#" class="nav-item" data-page="sugerencias" data-roles="admin,administracion,contabilidad" onclick="showPage('sugerencias',this)">
-        <span class="nav-icon">💡</span><span>Sugerencias</span>
+        <span class="nav-icon">💡</span><span id="nav-sug-label">Sugerencias</span>
       </a>
       <a href="#" class="nav-item" data-page="usuarios" data-roles="admin" onclick="showPage('usuarios',this)">
         <span class="nav-icon">👥</span><span>Usuarios</span>
@@ -149,23 +97,27 @@
   <main class="main-content">
     <!-- TOPBAR -->
     <header class="topbar">
-      <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+      <button class="menu-btn" onclick="toggleSidebar()" aria-label="Abrir menú">☰</button>
       <h1 class="page-title" id="page-title">Dashboard</h1>
       <div class="topbar-actions">
-        <button class="btn-cloud" onclick="openCloudModal()" title="Estado de sincronización y Nube">
-          <span class="cloud-dot"></span><span id="cloud-status-text">☁️ Nube</span>
+        <button class="btn-cloud" onclick="openCloudModal()" title="Base de datos y respaldo">
+          <span class="cloud-dot"></span><span id="cloud-status-text">Base de datos</span>
         </button>
-        <div class="user-pill" onclick="openLoginModal()" title="Clic para cambiar de rol">
+        <div class="user-pill" title="Sesión actual">
           <span id="topbar-user-avatar">👤</span>
           <span id="topbar-user-name">Usuario</span>
           <span class="badge" id="topbar-user-badge">Rol</span>
         </div>
-        <button class="btn-logout-top" onclick="logout()" title="Cerrar sesión / Salir del sistema">
-          <span>🚪 Salir</span>
+        <button class="btn-logout-top" onclick="logout()" title="Cerrar sesión">
+          <span>Salir</span>
         </button>
-        <span class="badge-year" id="badge-year"></span>
       </div>
     </header>
+    <div class="period-bar">
+      <span class="period-bar-label">Período</span>
+      <div class="period-scroll" id="period-filters" role="tablist" aria-label="Filtro de tiempo"></div>
+      <input type="date" id="period-dia" class="form-input period-dia-input" onchange="setPeriodoDia(this.value)" hidden/>
+    </div>
 
     <!-- PAGES -->
     <div id="page-dashboard" class="page active">
@@ -447,14 +399,13 @@
     <div class="sug-hero">
       <div class="sug-hero-icon">💡</div>
       <div>
-        <div class="sug-hero-title">Sugerencias de Módulos</div>
-        <div class="sug-hero-sub">Votá o proponé los módulos que querés ver en AGROTRIAL. Los más votados se desarrollan primero.</div>
+        <div class="sug-hero-title" id="sug-hero-title">Enviar sugerencia</div>
+        <div class="sug-hero-sub" id="sug-hero-sub">El administrador recibe tus propuestas y las gestiona desde su bandeja.</div>
       </div>
     </div>
 
-    <!-- FORM NUEVA SUGERENCIA -->
-    <div class="form-card">
-      <div class="form-title">✏️ Proponer nuevo módulo</div>
+    <div class="form-card" id="sug-form-card">
+      <div class="form-title">Proponer un módulo o mejora</div>
       <div class="form-grid">
         <div class="form-group" style="grid-column:span 2">
           <label>Nombre del módulo</label>
@@ -484,17 +435,15 @@
           </select>
         </div>
         <div class="form-group form-group-btn">
-          <button class="btn-primary" onclick="addSugerencia()">Enviar Sugerencia</button>
+          <button class="btn-primary" onclick="addSugerencia()">Enviar al administrador</button>
         </div>
       </div>
     </div>
 
-    <!-- MÓDULOS PRECARGADOS -->
-    <div class="sug-section-title">📦 Módulos disponibles para agregar</div>
-    <div class="sug-grid" id="sug-catalog"></div>
+    <div class="sug-section-title" id="sug-inbox-title" style="display:none">Bandeja del administrador</div>
+    <div class="sug-grid" id="sug-inbox"></div>
 
-    <!-- SUGERENCIAS DEL USUARIO -->
-    <div class="sug-section-title" id="sug-user-title" style="display:none">💬 Tus Sugerencias</div>
+    <div class="sug-section-title" id="sug-user-title" style="display:none">Tus envíos</div>
     <div class="sug-grid" id="sug-user-list"></div>
     </div><!-- /page-sugerencias -->
 
@@ -590,86 +539,33 @@
     </div>
   </div>
 
-  <!-- MODAL CAMBIO DE USUARIO / LOGIN -->
-  <div class="modal-overlay" id="modal-login" onclick="closeLoginModal()">
-    <div class="modal-box login-box" onclick="event.stopPropagation()">
-      <div class="modal-header-brand">
-        <span class="logo-icon">🌾</span>
-        <h2 style="font-size: 20px; font-weight: 800;">AGROTRIAL Finanzas</h2>
-      </div>
-      <p style="text-align: center; font-size: 13px; color: var(--text2); margin-bottom: 20px;">
-        Seleccioná tu rol para cambiar de interfaz o ingresá con tus credenciales:
-      </p>
-
-      <div class="role-selector-grid">
-        <div class="role-card-select" onclick="quickLogin('administracion')">
-          <div class="role-card-badge">Entorno Directivo</div>
-          <div class="role-card-icon">🏛️</div>
-          <div class="role-card-title">Administración</div>
-          <div class="role-card-desc">Rentabilidad neta, márgenes %, dashboard y balances.</div>
-        </div>
-
-        <div class="role-card-select" onclick="quickLogin('contabilidad')">
-          <div class="role-card-badge">Entorno Operativo</div>
-          <div class="role-card-icon">✍️</div>
-          <div class="role-card-title">Contabilidad de Carga</div>
-          <div class="role-card-desc">Carga rápida de ventas, gastos variables y costos fijos.</div>
-        </div>
-
-        <div class="role-card-select" onclick="quickLogin('admin')">
-          <div class="role-card-badge">Acceso Total</div>
-          <div class="role-card-icon">🛡️</div>
-          <div class="role-card-title">Admin</div>
-          <div class="role-card-desc">Control integral, gestión de usuarios y reseteo de claves.</div>
-        </div>
-      </div>
-
-      <div class="login-divider"><span>O ingresá con email y contraseña</span></div>
-
-      <form onsubmit="handleManualLogin(event)" class="login-manual-form">
-        <div class="form-group" style="margin-bottom: 12px;">
-          <label>Email o Usuario</label>
-          <input type="text" id="login-email" class="form-input" placeholder="ej: administracion@agrotrial.com" required/>
-        </div>
-        <div class="form-group" style="margin-bottom: 16px;">
-          <label>Contraseña</label>
-          <input type="password" id="login-pass" class="form-input" placeholder="••••••••" required/>
-        </div>
-        <div style="display: flex; gap: 10px;">
-          <button type="submit" class="btn-primary" style="flex: 1;">Entrar al Sistema</button>
-          <button type="button" class="btn-secondary" onclick="closeLoginModal()">Cancelar</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- MODAL CONFIGURACIÓN NUBE Y SINCRONIZACIÓN -->
+  <!-- MODAL BASE DE DATOS -->
   <div class="modal-overlay" id="modal-cloud" onclick="closeCloudModal()">
     <div class="modal-box" onclick="event.stopPropagation()">
-      <div class="modal-title">☁️ Conexión y Estado en la Nube</div>
+      <div class="modal-title">Base de datos del dispositivo</div>
       <p style="font-size: 13px; color: var(--text2); margin-bottom: 16px;">
-        Este sistema está preparado para funcionar 100% en la nube y sincronizar datos en tiempo real entre Administración, Contabilidad de Carga y Admin.
+        Los movimientos, usuarios y sugerencias se guardan en IndexedDB en este navegador. No se comparte solo con abrir la app en otro celular: usá un respaldo JSON para copiar los datos.
       </p>
 
       <div class="cloud-info-card">
         <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--green);">
-          ✅ Despliegue en GitHub Pages / En Línea
+          Estado
         </div>
-        <div style="font-size: 12px; color: var(--text2); line-height: 1.5;">
-          Una vez subido a GitHub Pages, cada miembro de AGROTRIAL accede desde su celular o PC mediante su enlace web único (ej: <code>https://desfaze.github.io/agrotrial-finanzas/</code>).
+        <div style="font-size: 12px; color: var(--text2); line-height: 1.5;" id="db-status-text">
+          Cargando…
         </div>
       </div>
 
       <div class="cloud-info-card" style="margin-top: 12px;">
         <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--blue);">
-          🔄 Respaldo y Sincronización de Datos
+          Respaldo
         </div>
         <div style="font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 12px;">
-          Podés respaldar o transferir la base de datos completa entre dispositivos con un solo clic:
+          Descargá o restaurá la base completa:
         </div>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-          <button class="btn-primary" onclick="exportDatabaseJSON()">💾 Descargar Respaldo Nube</button>
-          <button class="btn-secondary" onclick="document.getElementById('import-db-input').click()">📥 Cargar Datos de la Nube</button>
+          <button class="btn-primary" onclick="exportDatabaseJSON()">Descargar respaldo</button>
+          <button class="btn-secondary" onclick="document.getElementById('import-db-input').click()">Restaurar respaldo</button>
           <input type="file" id="import-db-input" style="display:none" accept=".json" onchange="importDatabaseJSON(event)"/>
         </div>
       </div>
