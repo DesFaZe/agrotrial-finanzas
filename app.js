@@ -36,21 +36,21 @@ const ROLES_CONFIG = {
     title: 'Admin',
     badge: 'Admin',
     badgeClass: 'badge-role-admin',
-    allowedPages: ['dashboard', 'ingresos', 'egresos', 'gastosfijos', 'rentabilidad', 'reportes', 'sugerencias', 'usuarios'],
+    allowedPages: ['dashboard', 'ingresos', 'porcobrar', 'egresos', 'gastosfijos', 'rentabilidad', 'reportes', 'sugerencias', 'usuarios'],
     defaultPage: 'dashboard'
   },
   administracion: {
     title: 'Administración',
     badge: 'Administración',
     badgeClass: 'badge-role-administracion',
-    allowedPages: ['dashboard', 'rentabilidad', 'reportes', 'ingresos', 'egresos', 'gastosfijos', 'sugerencias'],
+    allowedPages: ['dashboard', 'rentabilidad', 'reportes', 'ingresos', 'porcobrar', 'egresos', 'gastosfijos', 'sugerencias'],
     defaultPage: 'dashboard'
   },
   contabilidad: {
     title: 'Contabilidad de Carga',
     badge: 'Contabilidad de Carga',
     badgeClass: 'badge-role-contabilidad',
-    allowedPages: ['ingresos', 'egresos', 'gastosfijos', 'dashboard', 'sugerencias'],
+    allowedPages: ['ingresos', 'porcobrar', 'egresos', 'gastosfijos', 'dashboard', 'sugerencias'],
     defaultPage: 'ingresos'
   }
 };
@@ -188,6 +188,74 @@ function inPeriodo(fechaStr) {
 function ingresosFiltrados() { return ingresos.filter(x => inPeriodo(x.fecha)); }
 function egresosFiltrados()  { return egresos.filter(x => inPeriodo(x.fecha)); }
 
+function addDaysISO(fecha, days) {
+  if (!fecha) return '';
+  const [y, m, d] = fecha.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + Number(days || 0));
+  return toISODate(dt);
+}
+
+function normalizeIngreso(x) {
+  const cobro = x.cobro || 'contado';
+  const plazo = Number(x.plazo) || (cobro === 'credito' ? 30 : 0);
+  const vencimiento = x.vencimiento || (cobro === 'credito' ? addDaysISO(x.fecha, plazo) : x.fecha);
+  const pagos = Array.isArray(x.pagos) ? x.pagos.slice() : [];
+  let montoCobrado = pagos.reduce((s, p) => s + Number(p.monto || 0), 0);
+  if (!pagos.length) {
+    if (cobro !== 'credito' || x.estadoCobro === 'cobrado') montoCobrado = Number(x.montoCobrado || x.monto || 0);
+    else montoCobrado = Number(x.montoCobrado || 0);
+  }
+  if (cobro !== 'credito') montoCobrado = Number(x.monto || 0);
+  const saldo = Math.max(0, Number(x.monto || 0) - montoCobrado);
+  let estadoCobro = 'pendiente';
+  if (cobro !== 'credito' || saldo <= 0.009) estadoCobro = 'cobrado';
+  else if (montoCobrado > 0.009) estadoCobro = 'parcial';
+  const lastPago = pagos.length ? pagos[pagos.length - 1].fecha : '';
+  const fechaCobro = estadoCobro === 'cobrado' ? (x.fechaCobro || lastPago || x.fecha) : lastPago;
+  return { ...x, cobro, plazo, vencimiento, pagos, montoCobrado, saldo, estadoCobro, fechaCobro };
+}
+
+function isCreditoPendiente(x) {
+  const n = normalizeIngreso(x);
+  return n.cobro === 'credito' && n.saldo > 0.009;
+}
+
+function isCreditoVencido(x) {
+  return isCreditoPendiente(x) && normalizeIngreso(x).vencimiento < toISODate(new Date());
+}
+
+function diasHastaVencimiento(x) {
+  const n = normalizeIngreso(x);
+  if (!n.vencimiento) return 0;
+  const [y, m, d] = n.vencimiento.split('-').map(Number);
+  const v = new Date(y, m - 1, d);
+  const t = startOfDay(new Date());
+  return Math.round((v - t) / 86400000);
+}
+
+function pagosDeIngreso(x) {
+  const n = normalizeIngreso(x);
+  if (n.pagos.length) return n.pagos;
+  if (n.cobro !== 'credito') return [{ fecha: n.fecha, monto: n.monto, nota: 'Contado' }];
+  if (n.estadoCobro === 'cobrado' && n.fechaCobro) return [{ fecha: n.fechaCobro, monto: n.monto, nota: 'Cobro' }];
+  return [];
+}
+
+function onIngCobroChange() {
+  const credito = document.getElementById('ing-cobro').value === 'credito';
+  document.getElementById('ing-plazo-wrap').hidden = !credito;
+  document.getElementById('ing-venc-wrap').hidden = !credito;
+  if (credito) onIngPlazoChange();
+}
+
+function onIngPlazoChange() {
+  const fecha = document.getElementById('ing-fecha').value;
+  const plazo = document.getElementById('ing-plazo').value;
+  const venc = document.getElementById('ing-vencimiento');
+  if (fecha && venc) venc.value = addDaysISO(fecha, plazo);
+}
+
 function monthsCoveredByPeriod() {
   const { start, end } = getPeriodBounds();
   const months = new Set();
@@ -261,6 +329,11 @@ async function bootApp() {
   const today = toISODate(now);
   document.getElementById('ing-fecha').value  = today;
   document.getElementById('egr-fecha').value  = today;
+  const pcFecha = document.getElementById('pc-fecha');
+  if (pcFecha) pcFecha.value = today;
+  document.getElementById('ing-fecha').addEventListener('change', onIngPlazoChange);
+  onIngCobroChange();
+  onPcPlazoChange();
   renderPeriodFilters();
 
   if (currentUser && usuarios.some(u => u.id === currentUser.id && u.active)) {
@@ -296,7 +369,7 @@ function showPage(name, el) {
   }
 
   document.getElementById('page-title').textContent =
-    { dashboard:'Dashboard', ingresos:'Ingresos', egresos:'Egresos',
+    { dashboard:'Dashboard', ingresos:'Ingresos', porcobrar:'Por cobrar', egresos:'Egresos',
       rentabilidad:'Rentabilidad', gastosfijos:'Gastos Fijos', reportes:'Reportes',
       sugerencias: (currentUser && currentUser.role === 'admin') ? 'Bandeja de sugerencias' : 'Enviar sugerencia',
       usuarios:'Gestión de Usuarios' }[name] || name;
@@ -318,21 +391,153 @@ function closeSidebar() {
 }
 
 // ── ADD INGRESO ────────────────────────────────────────
+function pushIngreso({ fecha, desc, cat, cliente, monto, cobro, plazo, vencimiento }) {
+  const esCredito = cobro === 'credito';
+  ingresos.push({
+    id: Date.now(), fecha, desc, cat, cliente, monto,
+    cobro, plazo: esCredito ? plazo : 0,
+    vencimiento: esCredito ? (vencimiento || addDaysISO(fecha, plazo)) : fecha,
+    estadoCobro: esCredito ? 'pendiente' : 'cobrado',
+    fechaCobro: esCredito ? '' : fecha,
+    pagos: esCredito ? [] : [{ fecha, monto, nota: 'Contado' }],
+    montoCobrado: esCredito ? 0 : monto,
+    notaCredito: ''
+  });
+}
+
 function addIngreso() {
   const fecha   = document.getElementById('ing-fecha').value;
   const desc    = document.getElementById('ing-desc').value.trim();
   const cat     = document.getElementById('ing-cat').value;
   const cliente = document.getElementById('ing-cliente').value.trim();
   const monto   = parseFloat(document.getElementById('ing-monto').value);
+  const cobro   = document.getElementById('ing-cobro').value;
+  const plazo   = Number(document.getElementById('ing-plazo').value) || 30;
+  const vencimiento = document.getElementById('ing-vencimiento').value || addDaysISO(fecha, plazo);
 
-  if (!fecha || !desc || !monto || monto <= 0) { showToast('⚠️ Completa todos los campos obligatorios'); return; }
+  if (!fecha || !desc || !monto || monto <= 0) { showToast('Completá fecha, descripción y monto'); return; }
+  if (cobro === 'credito' && !cliente) { showToast('En crédito a plazo el cliente es obligatorio'); return; }
 
-  ingresos.push({ id: Date.now(), fecha, desc, cat, cliente, monto });
+  pushIngreso({ fecha, desc, cat, cliente, monto, cobro, plazo, vencimiento });
   save(); refreshAll();
   document.getElementById('ing-desc').value = '';
   document.getElementById('ing-cliente').value = '';
   document.getElementById('ing-monto').value = '';
-  showToast('✅ Ingreso registrado correctamente');
+  document.getElementById('ing-cobro').value = 'contado';
+  onIngCobroChange();
+  showToast(cobro === 'credito' ? 'Venta a crédito cargada. Queda por cobrar.' : 'Venta de contado registrada');
+}
+
+function onPcPlazoChange() {
+  const fecha = document.getElementById('pc-fecha')?.value;
+  const plazo = document.getElementById('pc-plazo')?.value;
+  const venc = document.getElementById('pc-vencimiento');
+  if (fecha && venc) venc.value = addDaysISO(fecha, plazo);
+}
+
+function addCredito() {
+  const fecha = document.getElementById('pc-fecha').value;
+  const cliente = document.getElementById('pc-cliente').value.trim();
+  const desc = document.getElementById('pc-desc').value.trim();
+  const cat = document.getElementById('pc-cat').value;
+  const monto = parseFloat(document.getElementById('pc-monto').value);
+  const plazo = Number(document.getElementById('pc-plazo').value) || 30;
+  const vencimiento = document.getElementById('pc-vencimiento').value || addDaysISO(fecha, plazo);
+
+  if (!fecha || !desc || !monto || monto <= 0) { showToast('Completá fecha, descripción y monto'); return; }
+  if (!cliente) { showToast('El cliente es obligatorio para cargar un crédito'); return; }
+
+  pushIngreso({ fecha, desc, cat, cliente, monto, cobro: 'credito', plazo, vencimiento });
+  save(); refreshAll();
+  document.getElementById('pc-cliente').value = '';
+  document.getElementById('pc-desc').value = '';
+  document.getElementById('pc-monto').value = '';
+  onPcPlazoChange();
+  showToast('Venta a crédito cargada');
+}
+
+function marcarCobrado(id) {
+  aplicarPago(id, null, toISODate(new Date()), 'Cobro total');
+}
+
+let cobroTargetId = null;
+let prorrogaTargetId = null;
+
+function openCobroModal(id) {
+  const item = ingresos.find(x => x.id === id);
+  if (!item) return;
+  const n = normalizeIngreso(item);
+  cobroTargetId = id;
+  document.getElementById('cobro-modal-info').textContent =
+    `${n.cliente || 'Cliente'} · ${n.desc} · Saldo ${fmtMoney(n.saldo)}`;
+  document.getElementById('cobro-fecha').value = toISODate(new Date());
+  document.getElementById('cobro-monto').value = n.saldo.toFixed(2);
+  document.getElementById('cobro-nota').value = '';
+  document.getElementById('modal-cobro').classList.add('open');
+}
+
+function closeCobroModal() {
+  document.getElementById('modal-cobro').classList.remove('open');
+  cobroTargetId = null;
+}
+
+function cobrarSaldoCompleto() {
+  if (cobroTargetId == null) return;
+  const fecha = document.getElementById('cobro-fecha').value || toISODate(new Date());
+  const nota = document.getElementById('cobro-nota').value.trim();
+  aplicarPago(cobroTargetId, null, fecha, nota || 'Cobro total');
+  closeCobroModal();
+}
+
+function confirmarCobroParcial() {
+  if (cobroTargetId == null) return;
+  const monto = parseFloat(document.getElementById('cobro-monto').value);
+  const fecha = document.getElementById('cobro-fecha').value || toISODate(new Date());
+  const nota = document.getElementById('cobro-nota').value.trim();
+  if (!monto || monto <= 0) { showToast('Ingresá un monto de cobro'); return; }
+  aplicarPago(cobroTargetId, monto, fecha, nota);
+  closeCobroModal();
+}
+
+function aplicarPago(id, montoOpcional, fecha, nota) {
+  const i = ingresos.find(x => x.id === id);
+  if (!i) return;
+  const n = normalizeIngreso(i);
+  const monto = montoOpcional == null ? n.saldo : montoOpcional;
+  if (monto > n.saldo + 0.01) { showToast('El cobro no puede superar el saldo'); return; }
+  i.pagos = n.pagos.concat([{ fecha, monto, nota: nota || '' }]);
+  const cobrado = i.pagos.reduce((s, p) => s + Number(p.monto || 0), 0);
+  i.montoCobrado = cobrado;
+  i.estadoCobro = cobrado + 0.009 >= n.monto ? 'cobrado' : 'parcial';
+  i.fechaCobro = i.estadoCobro === 'cobrado' ? fecha : '';
+  save(); refreshAll();
+  showToast(i.estadoCobro === 'cobrado' ? 'Crédito cobrado' : 'Cobro parcial registrado');
+}
+
+function openProrrogaModal(id) {
+  const item = ingresos.find(x => x.id === id);
+  if (!item) return;
+  const n = normalizeIngreso(item);
+  prorrogaTargetId = id;
+  document.getElementById('prorroga-modal-info').textContent =
+    `${n.cliente || 'Cliente'} · vence ${fmtDate(n.vencimiento)}`;
+  document.getElementById('prorroga-fecha').value = n.vencimiento;
+  document.getElementById('modal-prorroga').classList.add('open');
+}
+
+function closeProrrogaModal() {
+  document.getElementById('modal-prorroga').classList.remove('open');
+  prorrogaTargetId = null;
+}
+
+function confirmarProrroga() {
+  const i = ingresos.find(x => x.id === prorrogaTargetId);
+  const fecha = document.getElementById('prorroga-fecha').value;
+  if (!i || !fecha) { showToast('Elegí una fecha'); return; }
+  i.vencimiento = fecha;
+  save(); refreshAll();
+  closeProrrogaModal();
+  showToast('Vencimiento actualizado');
 }
 
 // ── ADD EGRESO ─────────────────────────────────────────
@@ -376,6 +581,30 @@ function openEdit(type, id) {
 
   const thirdLabel = type === 'ingreso' ? 'Cliente' : 'Proveedor';
   const thirdVal   = type === 'ingreso' ? (item.cliente||'') : (item.proveedor||'');
+  const n = type === 'ingreso' ? normalizeIngreso(item) : item;
+  const creditoFields = type === 'ingreso' ? `
+    <div class="form-group">
+      <label>Tipo de venta</label>
+      <select id="m-cobro" class="form-input">
+        <option value="contado"${n.cobro!=='credito'?' selected':''}>Contado</option>
+        <option value="credito"${n.cobro==='credito'?' selected':''}>Crédito</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Plazo (días)</label>
+      <input type="number" id="m-plazo" class="form-input" value="${n.plazo||30}" min="1"/>
+    </div>
+    <div class="form-group">
+      <label>Vencimiento</label>
+      <input type="date" id="m-vencimiento" class="form-input" value="${n.vencimiento||''}"/>
+    </div>
+    <div class="form-group">
+      <label>Estado de cobro</label>
+      <select id="m-estado-cobro" class="form-input">
+        <option value="pendiente"${n.estadoCobro==='pendiente'?' selected':''}>Pendiente</option>
+        <option value="cobrado"${n.estadoCobro==='cobrado'?' selected':''}>Cobrado</option>
+      </select>
+    </div>` : '';
 
   document.getElementById('modal-form').innerHTML = `
     <div class="form-group">
@@ -399,7 +628,8 @@ function openEdit(type, id) {
     <div class="form-group">
       <label>Monto ($)</label>
       <input type="number" id="m-monto" class="form-input" value="${item.monto}" step="0.01"/>
-    </div>`;
+    </div>
+    ${creditoFields}`;
 
   document.getElementById('modal').classList.add('open');
 }
@@ -415,7 +645,15 @@ function saveEdit() {
 
   if (type === 'ingreso') {
     const i = ingresos.findIndex(x => x.id === id);
-    ingresos[i] = { ...ingresos[i], fecha, desc, cat, cliente: third, monto };
+    const cobro = document.getElementById('m-cobro').value;
+    const plazo = Number(document.getElementById('m-plazo').value) || 30;
+    const vencimiento = document.getElementById('m-vencimiento').value || addDaysISO(fecha, plazo);
+    const estadoCobro = document.getElementById('m-estado-cobro').value;
+    const prev = ingresos[i];
+    ingresos[i] = {
+      ...prev, fecha, desc, cat, cliente: third, monto, cobro, plazo, vencimiento, estadoCobro,
+      fechaCobro: estadoCobro === 'cobrado' ? (prev.fechaCobro || toISODate(new Date())) : ''
+    };
   } else {
     const i = egresos.findIndex(x => x.id === id);
     egresos[i] = { ...egresos[i], fecha, desc, cat, proveedor: third, monto };
@@ -429,30 +667,60 @@ function closeModal() {
 }
 
 // ── RENDER INGRESOS TABLE ──────────────────────────────
+function cobroBadge(x) {
+  const n = normalizeIngreso(x);
+  if (n.cobro !== 'credito') return '<span class="badge badge-income">Contado</span>';
+  if (n.estadoCobro === 'cobrado') return '<span class="badge badge-income">Crédito cobrado</span>';
+  if (isCreditoVencido(n)) return '<span class="badge badge-overdue">Crédito vencido</span>';
+  if (n.estadoCobro === 'parcial') return '<span class="badge badge-credit">Crédito parcial</span>';
+  return `<span class="badge badge-credit">Crédito ${n.plazo} días</span>`;
+}
+
 function renderIngresos() {
   const search = (document.getElementById('ing-search')?.value || '').toLowerCase();
   const catF   = document.getElementById('ing-filter-cat')?.value || '';
-  let data = ingresosFiltrados().filter(x =>
-    (!search || x.desc.toLowerCase().includes(search) || (x.cliente||'').toLowerCase().includes(search)) &&
-    (!catF || x.cat === catF)
-  ).sort((a,b) => b.fecha.localeCompare(a.fecha));
+  const cobroF = document.getElementById('ing-filter-cobro')?.value || '';
+  let data = ingresosFiltrados().filter(x => {
+    const n = normalizeIngreso(x);
+    const textOk = !search || n.desc.toLowerCase().includes(search) || (n.cliente||'').toLowerCase().includes(search);
+    const catOk = !catF || n.cat === catF;
+    let cobroOk = true;
+    if (cobroF === 'contado') cobroOk = n.cobro !== 'credito';
+    if (cobroF === 'pendiente') cobroOk = isCreditoPendiente(n);
+    if (cobroF === 'vencido') cobroOk = isCreditoVencido(n);
+    if (cobroF === 'cobrado') cobroOk = n.cobro === 'credito' && n.estadoCobro === 'cobrado';
+    return textOk && catOk && cobroOk;
+  }).sort((a,b) => b.fecha.localeCompare(a.fecha));
 
   const tbody = document.getElementById('ingresos-tbody');
   if (!tbody) return;
-  tbody.innerHTML = data.length ? data.map(x => `
+  tbody.innerHTML = data.length ? data.map(x => {
+    const n = normalizeIngreso(x);
+    const cobrarBtn = isCreditoPendiente(n)
+      ? `<button class="btn-cobrar" onclick="openCobroModal(${n.id})">Cobrar</button>`
+      : '';
+    return `
     <tr>
-      <td>${fmtDate(x.fecha)}</td>
-      <td>${x.desc}</td>
-      <td><span class="badge badge-income">${x.cat}</span></td>
-      <td>${x.cliente||'–'}</td>
-      <td style="color:var(--green);font-weight:600">${fmtMoney(x.monto)}</td>
+      <td>${fmtDate(n.fecha)}</td>
+      <td>${n.desc}</td>
+      <td><span class="badge badge-income">${n.cat}</span></td>
+      <td>${n.cliente||'–'}</td>
+      <td>${cobroBadge(n)}</td>
+      <td>${n.cobro==='credito' ? fmtDate(n.vencimiento) : '–'}</td>
+      <td style="color:var(--green);font-weight:600">${fmtMoney(n.monto)}</td>
       <td>
-        <button class="action-btn" onclick="openEdit('ingreso',${x.id})" title="Editar">✏️</button>
-        <button class="action-btn" onclick="deleteItem('ingreso',${x.id})" title="Eliminar">🗑️</button>
+        ${cobrarBtn}
+        <button class="action-btn" onclick="openEdit('ingreso',${n.id})" title="Editar">✏️</button>
+        <button class="action-btn" onclick="deleteItem('ingreso',${n.id})" title="Eliminar">🗑️</button>
       </td>
-    </tr>`).join('') : '<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>';
+    </tr>`;
+  }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:24px">Sin registros</td></tr>';
 
   document.getElementById('ing-total').textContent = fmtMoney(data.reduce((s,x) => s + x.monto, 0));
+  const porCobrarEl = document.getElementById('ing-por-cobrar');
+  if (porCobrarEl) {
+    porCobrarEl.textContent = fmtMoney(data.filter(isCreditoPendiente).reduce((s,x) => s + normalizeIngreso(x).saldo, 0));
+  }
 }
 
 // ── RENDER EGRESOS TABLE ───────────────────────────────
@@ -561,8 +829,15 @@ function refreshDashboard() {
   const margen    = totalIng > 0 ? ((ganancia / totalIng) * 100).toFixed(1) : 0;
   const rango = periodLabel();
 
+  const pendientes = ingresos.filter(isCreditoPendiente);
+  const vencidos = pendientes.filter(isCreditoVencido);
+  const porCobrar = pendientes.reduce((s,x) => s + normalizeIngreso(x).saldo, 0);
+  const cobradoPeriodo = ingresos.reduce((s, x) => {
+    return s + pagosDeIngreso(x).filter(p => inPeriodo(p.fecha)).reduce((a, p) => a + Number(p.monto || 0), 0);
+  }, 0);
+
   document.getElementById('kpi-ingresos').textContent = fmtMoney(totalIng);
-  document.getElementById('kpi-ingresos-mes').textContent = rango;
+  document.getElementById('kpi-ingresos-mes').textContent = `${rango} · Cobrado: ${fmtMoney(cobradoPeriodo)}`;
   document.getElementById('kpi-egresos').textContent  = fmtMoney(totalCostos);
   document.getElementById('kpi-egresos-mes').textContent = `Variables: ${fmtMoney(totalEgr)} · Fijos: ${fmtMoney(totalGF)}`;
   document.getElementById('kpi-ganancia').textContent = fmtMoney(ganancia);
@@ -590,6 +865,8 @@ function refreshDashboard() {
     ...egrList.map(x  => ({...x, tipo:'egreso'}))
   ].sort((a,b) => b.fecha.localeCompare(a.fecha)).slice(0,8);
 
+  renderCobranzas(pendientes, vencidos, porCobrar);
+
   document.getElementById('recent-count').textContent = (ingList.length + egrList.length) + ' en ' + rango;
   document.getElementById('recent-tbody').innerHTML = all.map(x => `
     <tr>
@@ -604,10 +881,38 @@ function refreshDashboard() {
   buildEgresosDist();
 }
 
+function renderCobranzas(pendientes, vencidos, porCobrar) {
+  const tbody = document.getElementById('cobranzas-tbody');
+  const count = document.getElementById('cobranzas-count');
+  const card = document.getElementById('cobranzas-card');
+  if (!tbody) return;
+  if (count) count.textContent = `${pendientes.length} · ${fmtMoney(porCobrar)}` + (vencidos.length ? ` · ${vencidos.length} vencidos` : '');
+  if (card) card.style.display = pendientes.length ? 'block' : 'none';
+  const rows = pendientes.slice().sort((a,b) => normalizeIngreso(a).vencimiento.localeCompare(normalizeIngreso(b).vencimiento));
+  tbody.innerHTML = rows.map(x => {
+    const n = normalizeIngreso(x);
+    const late = isCreditoVencido(n);
+    return `<tr>
+      <td>${n.cliente||'–'}</td>
+      <td>${n.desc}</td>
+      <td>${fmtDate(n.vencimiento)}</td>
+      <td>${late ? '<span class="badge badge-overdue">Vencido</span>' : '<span class="badge badge-credit">A vencer</span>'}</td>
+      <td style="color:var(--gold);font-weight:600">${fmtMoney(n.saldo)}</td>
+      <td><button class="btn-cobrar" onclick="openCobroModal(${n.id})">Cobrar</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function cobrosEnMes(yyyyMm) {
+  return ingresos.reduce((s, x) => {
+    return s + pagosDeIngreso(x).filter(p => (p.fecha || '').startsWith(yyyyMm)).reduce((a, p) => a + Number(p.monto || 0), 0);
+  }, 0);
+}
+
 function buildFlujoCaja() {
   const months = last12Months();
-  const ingData = months.map(m => ingresosFiltrados().filter(x => x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0));
-  const egrData = months.map(m => egresosFiltrados().filter(x  => x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0));
+  const ingData = months.map(m => cobrosEnMes(m));
+  const egrData = months.map(m => egresos.filter(x => x.fecha.startsWith(m)).reduce((s,x)=>s+x.monto,0));
   const labels  = months.map(m => { const [y,mo]=m.split('-'); return new Date(y,mo-1).toLocaleDateString('es-AR',{month:'short',year:'2-digit'}); });
 
   const ctx = document.getElementById('chartFlujo');
@@ -762,8 +1067,11 @@ function refreshReportes() {
 }
 
 function exportCSV() {
-  let csv = 'Tipo,Fecha,Descripción,Categoría,Detalle,Monto\n';
-  ingresos.forEach(x => { csv += `Ingreso,${x.fecha},"${x.desc}",${x.cat},"${x.cliente||''}",${x.monto}\n`; });
+  let csv = 'Tipo,Fecha,Descripción,Categoría,Detalle,Monto,Cobro,Plazo,Vencimiento,EstadoCobro,FechaCobro\n';
+  ingresos.forEach(x => {
+    const n = normalizeIngreso(x);
+    csv += `Ingreso,${n.fecha},"${n.desc}",${n.cat},"${n.cliente||''}",${n.monto},${n.cobro},${n.plazo||''},${n.vencimiento||''},${n.estadoCobro},${n.fechaCobro||''}\n`;
+  });
   egresos.forEach(x  => { csv += `Egreso Variable,${x.fecha},"${x.desc}",${x.cat},"${x.proveedor||''}",${x.monto}\n`; });
   gastosFijos.filter(g=>g.activo).forEach(g => {
     const cMes = g.frec === 'anual' ? (g.monto/12).toFixed(2) : g.monto;
@@ -787,6 +1095,108 @@ function refreshAll() {
   refreshReportes();
   renderSugerencias();
   renderUsuarios();
+  renderPorCobrar();
+}
+
+function agingBucket(x) {
+  const dias = diasHastaVencimiento(x);
+  if (dias >= 0) return 'aldia';
+  if (dias >= -30) return 'd30';
+  if (dias >= -60) return 'd60';
+  return 'd90';
+}
+
+function renderPorCobrar() {
+  const tbody = document.getElementById('pc-tbody');
+  if (!tbody) return;
+  const creditos = ingresos.map(normalizeIngreso).filter(x => x.cobro === 'credito');
+  const abiertos = creditos.filter(x => x.saldo > 0.009);
+  const vencidos = abiertos.filter(isCreditoVencido);
+  const en7 = abiertos.filter(x => {
+    const d = diasHastaVencimiento(x);
+    return d >= 0 && d <= 7;
+  });
+  const cobradoPeriodo = ingresos.reduce((s, x) => {
+    return s + pagosDeIngreso(x).filter(p => inPeriodo(p.fecha)).reduce((a, p) => a + Number(p.monto || 0), 0);
+  }, 0);
+  const saldoAbierto = abiertos.reduce((s, x) => s + x.saldo, 0);
+
+  document.getElementById('pc-total').textContent = fmtMoney(saldoAbierto);
+  document.getElementById('pc-total-sub').textContent = abiertos.length + ' créditos abiertos';
+  document.getElementById('pc-vencido').textContent = fmtMoney(vencidos.reduce((s, x) => s + x.saldo, 0));
+  document.getElementById('pc-vencido-sub').textContent = vencidos.length + ' fuera de plazo';
+  document.getElementById('pc-7d').textContent = fmtMoney(en7.reduce((s, x) => s + x.saldo, 0));
+  document.getElementById('pc-cobrado').textContent = fmtMoney(cobradoPeriodo);
+  document.getElementById('pc-cobrado-sub').textContent = periodLabel();
+
+  const aging = { aldia: 0, d30: 0, d60: 0, d90: 0 };
+  abiertos.forEach(x => { aging[agingBucket(x)] += x.saldo; });
+  document.getElementById('pc-aging').innerHTML = [
+    ['Al día', aging.aldia],
+    ['1–30 días vencido', aging.d30],
+    ['31–60 días', aging.d60],
+    ['Más de 60 días', aging.d90]
+  ].map(([label, val], i) => `
+    <div class="aging-chip ${i && val ? 'warn' : ''}">
+      <div class="aging-label">${label}</div>
+      <div class="aging-value">${fmtMoney(val)}</div>
+    </div>`).join('');
+
+  const byClient = {};
+  abiertos.forEach(x => {
+    const k = x.cliente || 'Sin cliente';
+    if (!byClient[k]) byClient[k] = { n: 0, saldo: 0, vencido: 0 };
+    byClient[k].n += 1;
+    byClient[k].saldo += x.saldo;
+    if (isCreditoVencido(x)) byClient[k].vencido += x.saldo;
+  });
+  const cliRows = Object.entries(byClient).sort((a, b) => b[1].saldo - a[1].saldo);
+  document.getElementById('pc-clientes-tbody').innerHTML = cliRows.length ? cliRows.map(([name, v]) => `
+    <tr>
+      <td>${name}</td>
+      <td>${v.n}</td>
+      <td style="font-weight:600">${fmtMoney(v.saldo)}</td>
+      <td style="color:${v.vencido ? 'var(--red)' : 'var(--text2)'}">${fmtMoney(v.vencido)}</td>
+    </tr>`).join('') : '<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:16px">No hay saldos abiertos</td></tr>';
+
+  const search = (document.getElementById('pc-search')?.value || '').toLowerCase();
+  const estadoF = document.getElementById('pc-filter-estado')?.value || 'abiertos';
+  let list = creditos.filter(n => {
+    const text = !search || (n.cliente || '').toLowerCase().includes(search) || n.desc.toLowerCase().includes(search);
+    if (!text) return false;
+    if (estadoF === 'abiertos') return n.saldo > 0.009;
+    if (estadoF === 'vencido') return isCreditoVencido(n);
+    if (estadoF === 'aldia') return n.saldo > 0.009 && !isCreditoVencido(n);
+    if (estadoF === 'parcial') return n.estadoCobro === 'parcial';
+    if (estadoF === 'cobrado') return n.estadoCobro === 'cobrado';
+    return true;
+  }).sort((a, b) => a.vencimiento.localeCompare(b.vencimiento));
+
+  document.getElementById('pc-list-count').textContent = list.length + ' registros';
+  tbody.innerHTML = list.length ? list.map(n => {
+    const acciones = n.saldo > 0.009 ? `
+      <button class="btn-cobrar" onclick="openCobroModal(${n.id})">Cobrar</button>
+      <button class="btn-cobrar" onclick="openProrrogaModal(${n.id})">Prorrogar</button>` : '';
+    return `<tr>
+      <td>${n.cliente || '–'}</td>
+      <td>${fmtDate(n.fecha)} · ${n.desc}</td>
+      <td>${fmtDate(n.vencimiento)}</td>
+      <td>${cobroBadge(n)}</td>
+      <td>${fmtMoney(n.monto)}</td>
+      <td style="font-weight:700;color:${n.saldo ? 'var(--gold)' : 'var(--green)'}">${fmtMoney(n.saldo)}</td>
+      <td>${acciones}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">No hay créditos en este filtro</td></tr>';
+
+  const badge = document.getElementById('nav-cobrar-badge');
+  if (badge) {
+    if (vencidos.length) {
+      badge.hidden = false;
+      badge.textContent = String(vencidos.length);
+    } else {
+      badge.hidden = true;
+    }
+  }
 }
 
 // ── SUGERENCIAS ─────────────────────────────────────────
@@ -977,6 +1387,9 @@ function applyUserRolePermissions() {
 
   const navSug = document.getElementById('nav-sug-label');
   if (navSug) navSug.textContent = currentUser.role === 'admin' ? 'Bandeja' : 'Enviar sugerencia';
+
+  const cloudBtn = document.getElementById('btn-cloud');
+  if (cloudBtn) cloudBtn.style.display = currentUser.role === 'admin' ? 'flex' : 'none';
 
   // Filtrar nav items del sidebar según data-roles
   document.querySelectorAll('.sidebar-nav .nav-item').forEach(item => {
@@ -1211,6 +1624,10 @@ function renderUsuarios() {
 // ── NUBE Y SINCRONIZACIÓN ──────────────────────────────
 
 function openCloudModal() {
+  if (!currentUser || currentUser.role !== 'admin') {
+    showToast('Solo el administrador puede gestionar el respaldo');
+    return;
+  }
   const el = document.getElementById('db-status-text');
   if (el) {
     el.textContent = dbReady

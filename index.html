@@ -61,6 +61,10 @@
       <a href="#" class="nav-item" data-page="ingresos" data-roles="admin,administracion,contabilidad" onclick="showPage('ingresos',this)">
         <span class="nav-icon">💰</span><span>Ingresos</span>
       </a>
+      <a href="#" class="nav-item" data-page="porcobrar" data-roles="admin,administracion,contabilidad" onclick="showPage('porcobrar',this)">
+        <span class="nav-icon">⏳</span><span>Por cobrar</span>
+        <span class="nav-badge" id="nav-cobrar-badge" hidden></span>
+      </a>
       <a href="#" class="nav-item" data-page="egresos" data-roles="admin,administracion,contabilidad" onclick="showPage('egresos',this)">
         <span class="nav-icon">📤</span><span>Egresos</span>
       </a>
@@ -100,7 +104,7 @@
       <button class="menu-btn" onclick="toggleSidebar()" aria-label="Abrir menú">☰</button>
       <h1 class="page-title" id="page-title">Dashboard</h1>
       <div class="topbar-actions">
-        <button class="btn-cloud" onclick="openCloudModal()" title="Base de datos y respaldo">
+        <button class="btn-cloud" id="btn-cloud" onclick="openCloudModal()" title="Base de datos y respaldo">
           <span class="cloud-dot"></span><span id="cloud-status-text">Base de datos</span>
         </button>
         <div class="user-pill" title="Sesión actual">
@@ -155,6 +159,20 @@
         </div>
       </div>
 
+      <div class="recent-card" id="cobranzas-card">
+        <div class="recent-header">
+          <span>Cuentas por cobrar</span>
+          <span class="recent-count">
+            <span id="cobranzas-count">0 pendientes</span>
+            · <a href="#" onclick="showPage('porcobrar'); return false;">Administrar</a>
+          </span>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Cliente</th><th>Descripción</th><th>Vence</th><th>Estado</th><th>Monto</th><th></th></tr></thead>
+          <tbody id="cobranzas-tbody"></tbody>
+        </table>
+      </div>
+
       <div class="recent-card">
         <div class="recent-header">
           <span>Últimas Transacciones</span>
@@ -170,11 +188,32 @@
     <!-- INGRESOS PAGE -->
     <div id="page-ingresos" class="page">
       <div class="form-card">
-        <div class="form-title">➕ Nuevo Ingreso</div>
+        <div class="form-title">Nueva venta</div>
         <div class="form-grid">
           <div class="form-group">
             <label>Fecha</label>
             <input type="date" id="ing-fecha" class="form-input"/>
+          </div>
+          <div class="form-group">
+            <label>Tipo de venta</label>
+            <select id="ing-cobro" class="form-input" onchange="onIngCobroChange()">
+              <option value="contado">Contado</option>
+              <option value="credito">Crédito</option>
+            </select>
+          </div>
+          <div class="form-group credito-only" id="ing-plazo-wrap" hidden>
+            <label>Plazo del crédito</label>
+            <select id="ing-plazo" class="form-input" onchange="onIngPlazoChange()">
+              <option value="15">15 días</option>
+              <option value="30" selected>30 días</option>
+              <option value="45">45 días</option>
+              <option value="60">60 días</option>
+              <option value="90">90 días</option>
+            </select>
+          </div>
+          <div class="form-group credito-only" id="ing-venc-wrap" hidden>
+            <label>Vencimiento</label>
+            <input type="date" id="ing-vencimiento" class="form-input"/>
           </div>
           <div class="form-group">
             <label>Descripción</label>
@@ -199,7 +238,7 @@
             <input type="number" id="ing-monto" class="form-input" placeholder="0.00" min="0" step="0.01"/>
           </div>
           <div class="form-group form-group-btn">
-            <button class="btn-primary" onclick="addIngreso()">Guardar Ingreso</button>
+            <button class="btn-primary" onclick="addIngreso()">Guardar venta</button>
           </div>
         </div>
       </div>
@@ -211,14 +250,139 @@
           <option>Ventas</option><option>Servicios</option>
           <option>Subsidios</option><option>Arrendamiento</option><option>Otros</option>
         </select>
+        <select id="ing-filter-cobro" class="form-input" onchange="renderIngresos()">
+          <option value="">Todo tipo de venta</option>
+          <option value="contado">Contado</option>
+          <option value="pendiente">Crédito pendiente</option>
+          <option value="vencido">Crédito vencido</option>
+          <option value="cobrado">Crédito cobrado</option>
+        </select>
       </div>
 
       <div class="table-card">
         <table class="data-table">
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Monto</th><th>Acciones</th></tr></thead>
+          <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Cliente</th><th>Tipo de venta</th><th>Vence</th><th>Monto</th><th>Acciones</th></tr></thead>
           <tbody id="ingresos-tbody"></tbody>
         </table>
-        <div class="table-total">Total: <strong id="ing-total">$0</strong></div>
+        <div class="table-total">Total: <strong id="ing-total">$0</strong> · Por cobrar: <strong id="ing-por-cobrar">$0</strong></div>
+      </div>
+    </div>
+
+    <!-- POR COBRAR PAGE -->
+    <div id="page-porcobrar" class="page">
+      <div class="gf-info-bar">
+        <span class="gf-info-icon">⏳</span>
+        <span>La venta puede ser de contado o a crédito. Acá se cargan y se administran las de tipo crédito. Las de contado se cargan en Ingresos.</span>
+      </div>
+      <div class="form-card">
+        <div class="form-title">Cargar venta a crédito</div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Fecha de la venta</label>
+            <input type="date" id="pc-fecha" class="form-input" onchange="onPcPlazoChange()"/>
+          </div>
+          <div class="form-group">
+            <label>Cliente</label>
+            <input type="text" id="pc-cliente" class="form-input" placeholder="Quién debe"/>
+          </div>
+          <div class="form-group">
+            <label>Descripción</label>
+            <input type="text" id="pc-desc" class="form-input" placeholder="Ej: Venta de soja a 30 días"/>
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="pc-cat" class="form-input">
+              <option>Ventas</option>
+              <option>Servicios</option>
+              <option>Arrendamiento</option>
+              <option>Otros</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Monto ($)</label>
+            <input type="number" id="pc-monto" class="form-input" placeholder="0.00" min="0" step="0.01"/>
+          </div>
+          <div class="form-group">
+            <label>Plazo</label>
+            <select id="pc-plazo" class="form-input" onchange="onPcPlazoChange()">
+              <option value="15">15 días</option>
+              <option value="30" selected>30 días</option>
+              <option value="45">45 días</option>
+              <option value="60">60 días</option>
+              <option value="90">90 días</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Vencimiento</label>
+            <input type="date" id="pc-vencimiento" class="form-input"/>
+          </div>
+          <div class="form-group form-group-btn">
+            <button class="btn-primary" onclick="addCredito()">Cargar crédito</button>
+          </div>
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card income">
+          <div class="kpi-label">Por cobrar</div>
+          <div class="kpi-value" id="pc-total">$0</div>
+          <div class="kpi-sub" id="pc-total-sub">Saldo abierto</div>
+        </div>
+        <div class="kpi-card expense">
+          <div class="kpi-label">Vencido</div>
+          <div class="kpi-value" id="pc-vencido">$0</div>
+          <div class="kpi-sub" id="pc-vencido-sub">Fuera de plazo</div>
+        </div>
+        <div class="kpi-card status">
+          <div class="kpi-label">Vence en 7 días</div>
+          <div class="kpi-value" id="pc-7d">$0</div>
+          <div class="kpi-sub">A cobrar esta semana</div>
+        </div>
+        <div class="kpi-card profit">
+          <div class="kpi-label">Cobrado en el período</div>
+          <div class="kpi-value" id="pc-cobrado">$0</div>
+          <div class="kpi-sub" id="pc-cobrado-sub">Según filtro de tiempo</div>
+        </div>
+      </div>
+      <div class="aging-grid" id="pc-aging"></div>
+      <div class="form-card">
+        <div class="form-title">Por cliente</div>
+        <div class="table-card" style="margin:0;border:none">
+          <table class="data-table">
+            <thead><tr><th>Cliente</th><th>Créditos</th><th>Saldo</th><th>Vencido</th></tr></thead>
+            <tbody id="pc-clientes-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <input type="text" id="pc-search" class="form-input search-input" placeholder="Buscar cliente o descripción" oninput="renderPorCobrar()"/>
+        <select id="pc-filter-estado" class="form-input" onchange="renderPorCobrar()">
+          <option value="abiertos">Abiertos (pendiente y parcial)</option>
+          <option value="vencido">Solo vencidos</option>
+          <option value="aldia">Al día</option>
+          <option value="parcial">Pago parcial</option>
+          <option value="cobrado">Cobrados</option>
+          <option value="todos">Todos los créditos</option>
+        </select>
+      </div>
+      <div class="table-card">
+        <div class="recent-header">
+          <span>Cartera de créditos</span>
+          <span class="recent-count" id="pc-list-count">0</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Venta</th>
+              <th>Vence</th>
+              <th>Estado</th>
+              <th>Original</th>
+              <th>Saldo</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="pc-tbody"></tbody>
+        </table>
       </div>
     </div>
 
@@ -517,6 +681,45 @@
       <div class="modal-actions">
         <button class="btn-primary" onclick="saveEdit()">Guardar</button>
         <button class="btn-secondary" onclick="closeModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-cobro" onclick="closeCobroModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 460px;">
+      <div class="modal-title">Registrar cobro</div>
+      <p style="font-size: 13px; color: var(--text2); margin-bottom: 12px;" id="cobro-modal-info"></p>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label>Fecha de cobro</label>
+        <input type="date" id="cobro-fecha" class="form-input"/>
+      </div>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label>Monto cobrado</label>
+        <input type="number" id="cobro-monto" class="form-input" min="0" step="0.01"/>
+      </div>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>Nota (opcional)</label>
+        <input type="text" id="cobro-nota" class="form-input" placeholder="Ej: transferencia, cheque"/>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" onclick="confirmarCobroParcial()">Registrar cobro</button>
+        <button class="btn-secondary" onclick="cobrarSaldoCompleto()">Cobrar saldo completo</button>
+        <button class="btn-secondary" onclick="closeCobroModal()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-prorroga" onclick="closeProrrogaModal()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width: 440px;">
+      <div class="modal-title">Prorrogar vencimiento</div>
+      <p style="font-size: 13px; color: var(--text2); margin-bottom: 12px;" id="prorroga-modal-info"></p>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label>Nueva fecha de vencimiento</label>
+        <input type="date" id="prorroga-fecha" class="form-input"/>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" onclick="confirmarProrroga()">Guardar</button>
+        <button class="btn-secondary" onclick="closeProrrogaModal()">Cancelar</button>
       </div>
     </div>
   </div>

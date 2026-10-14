@@ -318,6 +318,61 @@ body {
 }
 .search-input { flex: 1; }
 
+.badge-credit {
+  background: var(--gold-glow);
+  color: var(--gold);
+}
+.badge-overdue {
+  background: var(--red-glow);
+  color: var(--red);
+}
+.btn-cobrar {
+  background: var(--gold-glow);
+  border: 1px solid rgba(210,153,34,0.4);
+  color: var(--gold);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 32px;
+}
+.btn-cobrar:hover { background: var(--gold); color: #000; }
+#cobranzas-card { margin-bottom: 24px; }
+.nav-badge {
+  margin-left: auto;
+  background: var(--red);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+}
+.aging-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.aging-chip {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.aging-chip.warn { border-color: rgba(248,81,73,0.35); }
+.aging-label { font-size: 11px; color: var(--text2); text-transform: uppercase; margin-bottom: 6px; }
+.aging-value { font-size: 18px; font-weight: 800; }
+@media (max-width: 768px) {
+  .aging-grid { grid-template-columns: 1fr 1fr; }
+}
+
 /* ACTION BUTTONS IN TABLE */
 .action-btn {
   background: none;
