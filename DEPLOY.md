@@ -1,74 +1,49 @@
-# 🌾 AGROTRIAL – Guía de Deploy en GitHub Pages
+# 🌾 AGROTRIAL – Sistema de Finanzas y Contabilidad en la Nube
 
-## Paso 1 – Instalar Git
-Descargá e instalá Git desde: **https://git-scm.com/download/win**
-> Aceptá todas las opciones predeterminadas. Reiniciá la terminal después.
+## 🚀 Estado de la Subida a GitHub
+El repositorio local ya está **100% configurado, inicializado y con commit realizado**.
+- **Repositorio remoto:** `https://github.com/DesFaZe/agrotrial-finanzas.git`
+- **Rama principal:** `main`
 
----
-
-## Paso 2 – Crear cuenta en GitHub
-Si no tenés cuenta: **https://github.com/signup** (es gratuito)
-
----
-
-## Paso 3 – Crear el repositorio en GitHub
-1. Entrá a **https://github.com/new**
-2. Nombre del repositorio: `agrotrial-finanzas`
-3. Marcá como **Público** ✅
-4. Hacé clic en **"Create repository"**
-
----
-
-## Paso 4 – Subir el proyecto (desde PowerShell)
-Abrí PowerShell en la carpeta del proyecto y ejecutá estos comandos uno por uno:
+### 📤 Para completar la subida a GitHub:
+En tu terminal de PowerShell (donde estabas en la captura), simplemente ejecutá:
 
 ```powershell
-cd "C:\Users\rolon\Documents\OscarAntigravity\agrotrial-finanzas"
-
-git init
-git add .
-git commit -m "Primer deploy AGROTRIAL Sistema Financiero"
-git branch -M main
-git remote add origin https://github.com/TU_USUARIO/agrotrial-finanzas.git
 git push -u origin main
 ```
-> ⚠️ Reemplazá `TU_USUARIO` con tu nombre de usuario de GitHub
+> Si te abre una ventana emergente de GitHub en Windows, hacé clic en **"Sign in with your browser"** para autorizar una sola vez.
 
 ---
 
-## Paso 5 – Activar GitHub Pages
-1. Entrá a tu repositorio en GitHub
-2. Hacé clic en **Settings** (Configuración)
+## 🌐 Activar GitHub Pages (Para acceder online desde cualquier dispositivo)
+1. Entrá a tu repositorio: **https://github.com/DesFaZe/agrotrial-finanzas**
+2. Hacé clic en la pestaña **Settings** (arriba a la derecha con el icono de engranaje ⚙️)
 3. En el menú izquierdo, hacé clic en **Pages**
-4. En "Branch", seleccioná **main** y carpeta **/ (root)**
+4. En **Build and deployment > Branch**, elegí:
+   - Branch: **`main`**
+   - Folder: **`/ (root)`**
 5. Hacé clic en **Save**
+6. En 1-2 minutos, tu sistema estará activo en:
+   👉 **`https://desfaze.github.io/agrotrial-finanzas/`**
 
 ---
 
-## Paso 6 – Acceder a tu sistema en línea
-Después de 1-2 minutos, tu sistema estará disponible en:
+## 👥 Roles del Sistema y Cuentas Preconfiguradas
 
-```
-https://TU_USUARIO.github.io/agrotrial-finanzas/
-```
+Cada rol tiene su **propia interfaz, permisos y vistas personalizadas**:
 
-✅ ¡Listo! Podés compartir ese link con toda tu empresa.
+| Rol | Perfil / Interfaz | Usuario Demo | Contraseña Demo | Secciones con Acceso |
+|---|---|---|---|---|
+| 👑 **Dueño** | **Interfaz Ejecutiva** | `dueno@agrotrial.com` | `1234` | Dashboard directivo, Rentabilidad (P&L completo, márgenes netos), Reportes y balances descargables, Sugerencias de módulos. |
+| ✍️ **Operador de Carga** | **Interfaz Operativa** | `operador@agrotrial.com` | `1234` | Carga de ventas/ingresos, gastos variables (semillas, gasoil, agroquímicos), gastos fijos mensuales, sugerencias. *(Márgenes confidenciales protegidos)* |
+| 🛡️ **Administrador** | **Control Total** | `admin@agrotrial.com` | `admin123` | Control total del sistema, configuración, carga financiera completa y **Gestión de Usuarios** (crear, activar/desactivar empleados y asignar roles). |
 
----
-
-## ⚠️ Importante sobre los datos
-- Los datos se guardan en el **navegador** (LocalStorage)
-- Cada persona que use la app desde su dispositivo tendrá sus propios datos
-- Si querés datos **compartidos entre varios usuarios**, avisame para agregar una base de datos en la nube (Firebase gratis)
+> 💡 **Cambio Rápido de Rol**: Podés hacer clic en el nombre de usuario (arriba a la derecha o en la barra lateral) en cualquier momento para alternar entre perfiles con un solo clic o iniciar sesión con credenciales.
 
 ---
 
-## 🔄 Actualizar el sistema en el futuro
-Cuando hagamos cambios, ejecutá:
-```powershell
-cd "C:\Users\rolon\Documents\OscarAntigravity\agrotrial-finanzas"
-git add .
-git commit -m "Actualización del sistema"
-git push
-```
-GitHub Pages se actualiza automáticamente en 1-2 minutos.
+## ☁️ Sincronización en la Nube
+- Hacé clic en el botón **`☁️ Nube`** en la barra superior para:
+  - Descargar un respaldo completo de la base de datos en formato JSON (`💾 Descargar Respaldo Nube`).
+  - Cargar datos en cualquier otro celular o computadora (`📥 Cargar Datos de la Nube`).
+  - O sincronizar mediante Firebase Firestore para actualización en tiempo real entre múltiples dispositivos.
