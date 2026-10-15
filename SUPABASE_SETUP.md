@@ -1,6 +1,6 @@
 # AGROTRIAL Finanzas — preparación de Supabase
 
-Esta rama prepara la base de datos centralizada, las reglas de acceso y la invitación segura de usuarios. **Todavía no activa la sincronización en la aplicación**: hace falta crear el proyecto Supabase, configurar sus credenciales públicas y migrar con cuidado la lógica de IndexedDB.
+Esta rama incorpora la conexión cliente opcional, la base centralizada, las reglas de acceso y la invitación segura de usuarios. **La sincronización real solo se activa cuando crees el proyecto Supabase y completes la configuración.** No se han incluido credenciales reales.
 
 ## Qué se agrega
 
@@ -52,10 +52,10 @@ La función usa los secretos del entorno de Supabase. No guardes la service-role
 ## Importante antes de activar la aplicación
 
 - La integración del cliente ya está preparada en esta rama: al configurar `supabase-config.js`, el inicio de sesión usa Supabase Auth, los registros se leen/escriben en `app_records` y Realtime actualiza otros dispositivos. Sin un proyecto real configurado, la aplicación permanece en modo local.
-- No importes los datos de producción hasta hacer una copia JSON verificada y definir cómo se resolverán IDs duplicados y conflictos.
-- Los usuarios existentes en IndexedDB no son usuarios de Supabase Auth. Deben invitarse o migrarse de forma controlada; no se deben copiar contraseñas en texto plano.
+- Antes de importar datos de producción, descargá y verificá un respaldo JSON. La importación remota actualiza registros con el mismo ID y agrega los nuevos; no elimina automáticamente registros remotos que no estén en el archivo. Si hay dos dispositivos editando el mismo registro a la vez, el último guardado puede prevalecer, por lo que hay que probar ese caso antes de producción.
+- Los usuarios existentes en IndexedDB no son usuarios de Supabase Auth. Creá el primer administrador manualmente y luego invitá a los demás desde la sección de usuarios; no se copian ni se reutilizan las contraseñas locales.
 - Las reglas RLS protegen el acceso a las tablas; probá accesos permitidos y denegados con cuentas de cada rol antes de cargar datos reales.
-- Realtime está habilitado para los registros. La interfaz vuelve a leer el snapshot cuando llegan cambios remotos. Probá escrituras simultáneas y conflictos antes de producción.
+- Realtime está habilitado para los registros. La interfaz vuelve a leer el snapshot cuando llegan cambios remotos, incluyendo eventos que ocurren durante una sincronización local. Probá escrituras simultáneas y conflictos antes de producción.
 - La tabla de registros usa JSONB para facilitar la migración inicial. Una vez estabilizada la integración, conviene normalizar entidades y restricciones financieras que requieran integridad relacional.
 
 ## Matriz de permisos inicial
