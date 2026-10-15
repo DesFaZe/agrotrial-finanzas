@@ -317,6 +317,14 @@ async function startCloudRealtime() {
 }
 
 function updateCloudStatus() {
+  const passInput = document.getElementById('usr-pass');
+  if (passInput) {
+    const cloudMode = isSupabaseConfigured();
+    passInput.disabled = cloudMode;
+    passInput.placeholder = cloudMode ? 'Se define desde el correo de invitación' : '••••••••';
+    const passLabel = passInput.previousElementSibling;
+    if (passLabel) passLabel.textContent = cloudMode ? 'Contraseña (no se crea manualmente en nube)' : 'Contraseña Inicial';
+  }
   const el = document.getElementById('db-status-text');
   if (!el) return;
   if (isSupabaseConfigured()) {
