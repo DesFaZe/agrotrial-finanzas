@@ -150,6 +150,16 @@ let cloudRealtimeChannel = null;
 let cloudSyncBusy = false;
 let cloudDeleteQueue = [];
 let cloudKnownIds = { ingresos: new Set(), egresos: new Set(), gastosfijos: new Set(), sugerencias: new Set() };
+let cloudSnapshotByKey = Object.create(null);
+
+function cloudRecordKey(collection, id) {
+  return collection + ':' + String(id);
+}
+
+function snapshotCloudRecord(collection, item) {
+  if (!item || item.id == null) return;
+  cloudSnapshotByKey[cloudRecordKey(collection, item.id)] = JSON.stringify(item);
+}
 
 function isSupabaseConfigured() {
   const cfg = window.AGROTRIAL_SUPABASE_CONFIG || {};
@@ -203,8 +213,10 @@ async function loadCloudRecords() {
   egresos = buckets.egresos;
   gastosFijos = buckets.gastosfijos;
   sugerencias = buckets.sugerencias;
+  cloudSnapshotByKey = Object.create(null);
   for (const collection of Object.keys(cloudKnownIds)) {
     cloudKnownIds[collection] = new Set((buckets[collection] || []).map(item => String(item.id)));
+    for (const item of (buckets[collection] || [])) snapshotCloudRecord(collection, item);
   }
 
   // Mantener una copia local para tolerar cierres del navegador; en modo nube,
@@ -264,10 +276,19 @@ async function syncCloudRecords() {
         if (rows.length) {
           const { error } = await client.from('app_records').insert(rows);
           if (error) throw error;
+          for (const row of rows) snapshotCloudRecord(collection, row.payload);
         }
-      } else if (rows.length) {
-        const { error } = await client.from('app_records').upsert(rows, { onConflict: 'collection,id' });
-        if (error) throw error;
+      } else {
+        // Solo subir filas nuevas o modificadas. No reenviar snapshots viejos de
+        // todo el dispositivo, para no pisar cambios remotos en otras filas.
+        rows = rows.filter(row =>
+          cloudSnapshotByKey[cloudRecordKey(collection, row.id)] !== JSON.stringify(row.payload)
+        );
+        if (rows.length) {
+          const { error } = await client.from('app_records').upsert(rows, { onConflict: 'collection,id' });
+          if (error) throw error;
+          for (const row of rows) snapshotCloudRecord(collection, row.payload);
+        }
       }
       cloudKnownIds[collection] = new Set((items || []).filter(x => x && x.id != null).map(x => String(x.id)));
     }
@@ -279,6 +300,8 @@ async function syncCloudRecords() {
         cloudDeleteQueue.push(item);
         throw error;
       }
+      delete cloudSnapshotByKey[cloudRecordKey(item.collection, item.id)];
+      if (cloudKnownIds[item.collection]) cloudKnownIds[item.collection].delete(String(item.id));
     }
     updateCloudStatus();
     return true;
