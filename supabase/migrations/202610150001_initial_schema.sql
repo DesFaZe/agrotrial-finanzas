@@ -118,13 +118,7 @@ with check ((select public.current_app_role()) = 'admin');
 drop policy if exists "finance_read_active_users" on public.app_records;
 create policy "finance_read_active_users"
 on public.app_records for select to authenticated
-using (
-  (select public.current_app_role()) is not null
-  and (
-    collection <> 'sugerencias'
-    or (select public.current_app_role()) = 'admin'
-  )
-);
+using ((select public.current_app_role()) is not null);
 
 drop policy if exists "finance_insert_authorized" on public.app_records;
 create policy "finance_insert_authorized"
