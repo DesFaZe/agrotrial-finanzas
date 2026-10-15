@@ -118,7 +118,14 @@ with check ((select public.current_app_role()) = 'admin');
 drop policy if exists "finance_read_active_users" on public.app_records;
 create policy "finance_read_active_users"
 on public.app_records for select to authenticated
-using ((select public.current_app_role()) is not null);
+using (
+  (select public.current_app_role()) is not null
+  and (
+    collection <> 'sugerencias'
+    or (select public.current_app_role()) = 'admin'
+    or payload ->> 'autorId' = (select auth.uid())::text
+  )
+);
 
 drop policy if exists "finance_insert_authorized" on public.app_records;
 create policy "finance_insert_authorized"
@@ -174,8 +181,14 @@ drop policy if exists "finance_delete_authorized" on public.app_records;
 create policy "finance_delete_authorized"
 on public.app_records for delete to authenticated
 using (
-  (select public.current_app_role()) in ('admin', 'administracion', 'contabilidad')
-  and collection in ('ingresos', 'egresos', 'gastosfijos', 'sugerencias')
+  (
+    collection in ('ingresos', 'egresos', 'gastosfijos')
+    and (select public.current_app_role()) in ('admin', 'administracion', 'contabilidad')
+  )
+  or (
+    collection = 'sugerencias'
+    and (select public.current_app_role()) = 'admin'
+  )
 );
 
 -- Habilitar eventos Realtime para cambios en los registros, si la publicación existe
