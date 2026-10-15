@@ -28,7 +28,7 @@ test('service-role credential is only referenced by the server-side Edge Functio
 test('source does not ship predictable default user passwords', () => {
   const app = read('app.js');
   assert.match(app, /const DEFAULT_USERS = \[\];/);
-  assert.doesNotMatch(app, /admin2026|admin123|carga123|pass \\|\\| '1234'/);
+  assert.doesNotMatch(app, /admin2026|admin123|carga123|pass\s*\|\|\s*'1234'/);
 });
 
 test('central login and remote records are wired into the application', () => {
