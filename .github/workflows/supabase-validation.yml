@@ -1,0 +1,25 @@
+name: Supabase integration validation
+
+on:
+  push:
+    branches:
+      - main
+      - feat/supabase-central-db
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check application JavaScript syntax
+        run: node --check app.js
+      - name: Run Supabase safety smoke tests
+        run: node --test tests/supabase-smoke.test.cjs
