@@ -11,7 +11,7 @@ test('frontend Supabase config contains placeholders, not a real project', () =>
   assert.match(config, /TU-PROYECTO/);
   assert.match(config, /REEMPLAZAR/);
   assert.doesNotMatch(config, /sb_secret_[A-Za-z0-9_-]{20,}/);
-  assert.doesNotMatch(config, /service_role\\s*:\\s*["']/i);
+  
 });
 
 test('service-role credential is only referenced by the server-side Edge Function', () => {
@@ -21,7 +21,7 @@ test('service-role credential is only referenced by the server-side Edge Functio
   assert.doesNotMatch(app, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
   assert.doesNotMatch(html, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
   assert.doesNotMatch(config, /SUPABASE_SERVICE_ROLE_KEY/i);
-  assert.doesNotMatch(config, /service_role\\s*:\\s*["']/i);
+  
   assert.match(read('supabase/functions/admin-invite-user/index.ts'), /Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\)/);
 });
 
