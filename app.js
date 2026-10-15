@@ -243,7 +243,7 @@ async function loadCloudUsers() {
 
 async function syncCloudRecords() {
   const client = getSupabase();
-  if (!client || !currentUser || cloudSyncBusy) return;
+  if (!client || !currentUser || cloudSyncBusy) return false;
   cloudSyncBusy = true;
   try {
     const batches = [
@@ -281,9 +281,11 @@ async function syncCloudRecords() {
       }
     }
     updateCloudStatus();
+    return true;
   } catch (error) {
     console.error('Error al sincronizar con Supabase:', error);
     showToast('No se pudo sincronizar con la nube. Tus cambios locales se conservaron.');
+    return false;
   } finally {
     cloudSyncBusy = false;
   }
@@ -2002,7 +2004,8 @@ function importDatabaseJSON(e) {
 
       await persistDB();
       if (isSupabaseConfigured() && currentUser) {
-        await syncCloudRecords();
+        const synced = await syncCloudRecords();
+        if (!synced) throw new Error('La sincronización no se completó.');
       }
       refreshAll();
       closeCloudModal();
