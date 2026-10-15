@@ -145,6 +145,7 @@ function save() {
 let supabaseClient = null;
 let cloudRealtimeChannel = null;
 let cloudSyncBusy = false;
+let cloudDeleteQueue = [];
 let cloudKnownIds = { ingresos: new Set(), egresos: new Set(), gastosfijos: new Set(), sugerencias: new Set() };
 
 function isSupabaseConfigured() {
@@ -256,6 +257,15 @@ async function syncCloudRecords() {
       }
       cloudKnownIds[collection] = new Set((items || []).filter(x => x && x.id != null).map(x => String(x.id)));
     }
+    const pendingDeletes = cloudDeleteQueue.splice(0);
+    for (const item of pendingDeletes) {
+      const { error } = await client.from('app_records').delete()
+        .eq('collection', item.collection).eq('id', String(item.id));
+      if (error) {
+        cloudDeleteQueue.push(item);
+        throw error;
+      }
+    }
     updateCloudStatus();
   } catch (error) {
     console.error('Error al sincronizar con Supabase:', error);
@@ -265,17 +275,10 @@ async function syncCloudRecords() {
   }
 }
 
-async function deleteCloudRecord(collection, id) {
-  const client = getSupabase();
-  if (!client || !currentUser || id == null) return;
-  const { error } = await client.from('app_records').delete()
-    .eq('collection', collection).eq('id', String(id));
-  if (error) {
-    console.error('Error al eliminar registro remoto:', error);
-    showToast('El registro se quitó localmente, pero no se pudo eliminar en la nube.');
-  } else if (cloudKnownIds[collection]) {
-    cloudKnownIds[collection].delete(String(id));
-  }
+function deleteCloudRecord(collection, id) {
+  if (!isSupabaseConfigured() || !currentUser || id == null) return;
+  cloudDeleteQueue.push({ collection, id: String(id) });
+  if (cloudKnownIds[collection]) cloudKnownIds[collection].delete(String(id));
 }
 
 async function startCloudRealtime() {
@@ -1745,7 +1748,11 @@ function closeResetPassModal() {
   targetResetUserId = null;
 }
 
-function confirmResetPassword() {
+async function confirmResetPassword() {
+  if (isSupabaseConfigured()) {
+    showToast('En modo nube, usá la opción de recuperación de contraseña por correo de Supabase.');
+    return;
+  }
   const newPass = document.getElementById('reset-new-pass').value.trim();
   if (!newPass) {
     showToast('⚠️ Ingresá una nueva contraseña válida');
@@ -1765,14 +1772,43 @@ function confirmResetPassword() {
 
 // ── GESTIÓN DE USUARIOS (ADMIN) ────────────────────────
 
-function addUser() {
+async function addUser() {
   const nombre = document.getElementById('usr-nombre').value.trim();
   const email  = document.getElementById('usr-email').value.trim().toLowerCase();
   const role   = document.getElementById('usr-role').value;
-  const pass   = document.getElementById('usr-pass').value.trim() || '1234';
+  const pass   = document.getElementById('usr-pass').value.trim();
 
   if (!nombre || !email) {
     showToast('⚠️ Completá el nombre y el correo');
+    return;
+  }
+  if (isSupabaseConfigured()) {
+    if (!currentUser || currentUser.role !== 'admin') {
+      showToast('Solo un administrador puede invitar usuarios');
+      return;
+    }
+    if (!pass) {
+      showToast('En modo nube, el usuario define su contraseña desde la invitación por correo.');
+    }
+    try {
+      const client = getSupabase();
+      const { data: { session } } = await client.auth.getSession();
+      if (!session) throw new Error('La sesión expiró. Volvé a iniciar sesión.');
+      const { data, error } = await client.functions.invoke('admin-invite-user', {
+        body: { name: nombre, email, role }
+      });
+      if (error) throw error;
+      if (data && data.error) throw new Error(data.error);
+      await loadCloudUsers();
+      renderUsuarios();
+      document.getElementById('usr-nombre').value = '';
+      document.getElementById('usr-email').value = '';
+      document.getElementById('usr-pass').value = '';
+      showToast('Invitación enviada. El usuario debe revisar su correo.');
+    } catch (error) {
+      console.error('No se pudo invitar al usuario:', error);
+      showToast(error.message || 'No se pudo invitar al usuario');
+    }
     return;
   }
 
@@ -1780,18 +1816,11 @@ function addUser() {
     showToast('⚠️ Ya existe un usuario registrado con ese email');
     return;
   }
-
   const avatars = { admin: '🛡️', administracion: '🏛️', contabilidad: '✍️' };
   usuarios.push({
-    id: 'u_' + Date.now(),
-    name: nombre,
-    email,
-    role,
-    pass,
-    active: true,
-    avatar: avatars[role] || '👤'
+    id: 'u_' + Date.now(), name: nombre, email, role,
+    pass: pass || '1234', active: true, avatar: avatars[role] || '👤'
   });
-
   save();
   renderUsuarios();
   document.getElementById('usr-nombre').value = '';
@@ -1799,12 +1828,31 @@ function addUser() {
   document.getElementById('usr-pass').value = '';
   showToast('✅ Usuario creado exitosamente');
 }
-
-function toggleUserStatus(id) {
+async function toggleUserStatus(id) {
   const user = usuarios.find(u => u.id === id);
   if (!user) return;
   if (user.id === currentUser.id) {
     showToast('⚠️ No podés desactivar tu propia cuenta activa');
+    return;
+  }
+  if (isSupabaseConfigured()) {
+    if (!currentUser || currentUser.role !== 'admin') {
+      showToast('Solo un administrador puede cambiar usuarios');
+      return;
+    }
+    const nextActive = !user.active;
+    const client = getSupabase();
+    const { error } = await client.from('app_profiles')
+      .update({ active: nextActive })
+      .eq('id', user.id);
+    if (error) {
+      console.error('No se pudo actualizar el usuario:', error);
+      showToast('No se pudo actualizar el usuario en la nube');
+      return;
+    }
+    user.active = nextActive;
+    renderUsuarios();
+    showToast(`Estado actualizado: ${user.name} ahora está ${user.active ? 'Activo' : 'Inactivo'}`);
     return;
   }
   user.active = !user.active;
@@ -1813,18 +1861,21 @@ function toggleUserStatus(id) {
   showToast(`Estado actualizado: ${user.name} ahora está ${user.active ? 'Activo' : 'Inactivo'}`);
 }
 
-function deleteUser(id) {
+async function deleteUser(id) {
   if (id === currentUser.id) {
     showToast('⚠️ No podés eliminar tu propia cuenta en sesión');
     return;
   }
   if (!confirm('¿Eliminar este usuario definitivamente?')) return;
+  if (isSupabaseConfigured()) {
+    showToast('En modo nube, desactivá la cuenta para conservar el historial y revocar su acceso.');
+    return;
+  }
   usuarios = usuarios.filter(u => u.id !== id);
   save();
   renderUsuarios();
   showToast('🗑️ Usuario eliminado');
 }
-
 function renderUsuarios() {
   const tbody = document.getElementById('usuarios-tbody');
   const countEl = document.getElementById('usr-count');
@@ -1872,9 +1923,11 @@ function openCloudModal() {
   }
   const el = document.getElementById('db-status-text');
   if (el) {
-    el.textContent = dbReady
-      ? `IndexedDB activa en este navegador. ${ingresos.length} ingresos, ${egresos.length} egresos, ${gastosFijos.length} gastos fijos, ${usuarios.length} usuarios, ${sugerencias.length} sugerencias.`
-      : 'La base de datos todavía no está lista.';
+    el.textContent = isSupabaseConfigured() && currentUser
+      ? `Supabase conectado. ${ingresos.length} ingresos, ${egresos.length} egresos, ${gastosFijos.length} gastos fijos y ${usuarios.length} perfiles visibles. Los datos locales se mantienen como respaldo del navegador.`
+      : dbReady
+        ? `IndexedDB local activa. ${ingresos.length} ingresos, ${egresos.length} egresos, ${gastosFijos.length} gastos fijos, ${usuarios.length} usuarios, ${sugerencias.length} sugerencias.`
+        : 'La base de datos todavía no está lista.';
   }
   document.getElementById('modal-cloud').classList.add('open');
 }
