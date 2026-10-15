@@ -51,11 +51,11 @@ La función usa los secretos del entorno de Supabase. No guardes la service-role
 
 ## Importante antes de activar la aplicación
 
-- La aplicación actual usa IndexedDB y autenticación local. Estos archivos preparan la infraestructura, pero **no cambian todavía el inicio de sesión ni los guardados actuales**.
+- La integración del cliente ya está preparada en esta rama: al configurar `supabase-config.js`, el inicio de sesión usa Supabase Auth, los registros se leen/escriben en `app_records` y Realtime actualiza otros dispositivos. Sin un proyecto real configurado, la aplicación permanece en modo local.
 - No importes los datos de producción hasta hacer una copia JSON verificada y definir cómo se resolverán IDs duplicados y conflictos.
 - Los usuarios existentes en IndexedDB no son usuarios de Supabase Auth. Deben invitarse o migrarse de forma controlada; no se deben copiar contraseñas en texto plano.
 - Las reglas RLS protegen el acceso a las tablas; probá accesos permitidos y denegados con cuentas de cada rol antes de cargar datos reales.
-- Realtime está habilitado para los registros. La sincronización visible en la interfaz requiere conectar el cliente y reemplazar las funciones locales de lectura/escritura por operaciones remotas.
+- Realtime está habilitado para los registros. La interfaz vuelve a leer el snapshot cuando llegan cambios remotos. Probá escrituras simultáneas y conflictos antes de producción.
 - La tabla de registros usa JSONB para facilitar la migración inicial. Una vez estabilizada la integración, conviene normalizar entidades y restricciones financieras que requieran integridad relacional.
 
 ## Matriz de permisos inicial
@@ -63,10 +63,10 @@ La función usa los secretos del entorno de Supabase. No guardes la service-role
 | Operación | Admin | Administración | Contabilidad |
 |---|---:|---:|---:|
 | Leer registros financieros | Sí | Sí | Sí |
-| Crear/editar ingresos, egresos y gastos fijos | Sí | No | Sí |
-| Leer sugerencias | Sí | No | No |
+| Crear/editar ingresos, egresos y gastos fijos | Sí | Sí | Sí |
+| Leer sugerencias | Sí | Solo las propias en la interfaz | Solo las propias en la interfaz |
 | Enviar sugerencias | Sí | Sí | Sí |
-| Eliminar registros financieros | Sí | No | No |
+| Eliminar registros financieros | Sí | Sí | Sí |
 | Gestionar perfiles e invitar usuarios | Sí | No | No |
 
 Esta matriz debe compararse con los permisos exactos de la aplicación actual antes de activar la integración.
