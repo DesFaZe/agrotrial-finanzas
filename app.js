@@ -14,11 +14,7 @@ const DB_NAME = 'agrotrial_finanzas';
 const DB_VERSION = 1;
 const DB_STORES = ['ingresos', 'egresos', 'gastosfijos', 'usuarios', 'sugerencias', 'meta'];
 
-const DEFAULT_USERS = [
-  { id: 'u_admin',          name: 'Admin General',            email: 'admin@agrotrial.com',          role: 'admin',          pass: 'admin2026', active: true, avatar: '🛡️' },
-  { id: 'u_administracion', name: 'Administración AGROTRIAL', email: 'administracion@agrotrial.com', role: 'administracion', pass: 'admin123',  active: true, avatar: '🏛️' },
-  { id: 'u_contabilidad',   name: 'Contabilidad de Carga',    email: 'carga@agrotrial.com',          role: 'contabilidad',   pass: 'carga123',  active: true, avatar: '✍️' }
-];
+const DEFAULT_USERS = [];
 
 const PERIOD_OPTIONS = [
   { id: 'hoy',     label: 'Hoy' },
@@ -1879,10 +1875,14 @@ async function addUser() {
     showToast('⚠️ Ya existe un usuario registrado con ese email');
     return;
   }
+  if (!pass) {
+    showToast('⚠️ Completá una contraseña inicial para el usuario local');
+    return;
+  }
   const avatars = { admin: '🛡️', administracion: '🏛️', contabilidad: '✍️' };
   usuarios.push({
     id: 'u_' + Date.now(), name: nombre, email, role,
-    pass: pass || '1234', active: true, avatar: avatars[role] || '👤'
+    pass, active: true, avatar: avatars[role] || '👤'
   });
   save();
   renderUsuarios();
