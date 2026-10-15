@@ -131,7 +131,182 @@ async function persistDB() {
 }
 
 function save() {
-  persistDB().catch(() => showToast('No se pudo guardar en la base de datos'));
+  persistDB()
+    .then(() => {
+      if (isSupabaseConfigured() && currentUser) return syncCloudRecords();
+    })
+    .catch(() => showToast('No se pudo guardar en la base de datos'));
+}
+
+
+// ── SUPABASE / SINCRONIZACIÓN CENTRALIZADA ──────────────
+// Se activa solo cuando supabase-config.js contiene una URL y publishable key reales.
+// No se incluyen secretos de servidor en el navegador.
+let supabaseClient = null;
+let cloudRealtimeChannel = null;
+let cloudSyncBusy = false;
+let cloudKnownIds = { ingresos: new Set(), egresos: new Set(), gastosfijos: new Set(), sugerencias: new Set() };
+
+function isSupabaseConfigured() {
+  const cfg = window.AGROTRIAL_SUPABASE_CONFIG || {};
+  return Boolean(
+    window.supabase && typeof window.supabase.createClient === 'function' &&
+    /^https:\/\/[^/]+\.supabase\.co$/.test(String(cfg.url || '')) &&
+    typeof cfg.publishableKey === 'string' &&
+    cfg.publishableKey.length > 15 &&
+    !cfg.publishableKey.includes('REEMPLAZAR') &&
+    !cfg.url.includes('TU-PROYECTO')
+  );
+}
+
+function getSupabase() {
+  if (!isSupabaseConfigured()) return null;
+  if (!supabaseClient) {
+    const cfg = window.AGROTRIAL_SUPABASE_CONFIG;
+    supabaseClient = window.supabase.createClient(cfg.url, cfg.publishableKey, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+    });
+  }
+  return supabaseClient;
+}
+
+function cloudCollectionRows(collection, items) {
+  return (items || []).filter(item => item && item.id != null).map(item => ({
+    collection,
+    id: String(item.id),
+    payload: item,
+    updated_by: currentUser && currentUser.id ? currentUser.id : null
+  }));
+}
+
+async function loadCloudRecords() {
+  const client = getSupabase();
+  if (!client || !currentUser) return;
+  const { data, error } = await client.from('app_records')
+    .select('collection,id,payload,updated_at')
+    .in('collection', ['ingresos', 'egresos', 'gastosfijos', 'sugerencias']);
+  if (error) throw error;
+
+  const buckets = { ingresos: [], egresos: [], gastosfijos: [], sugerencias: [] };
+  for (const row of (data || [])) {
+    if (buckets[row.collection]) {
+      const payload = row.payload && typeof row.payload === 'object' ? row.payload : {};
+      buckets[row.collection].push({ ...payload, id: payload.id ?? row.id });
+    }
+  }
+
+  ingresos = buckets.ingresos;
+  egresos = buckets.egresos;
+  gastosFijos = buckets.gastosfijos;
+  sugerencias = buckets.sugerencias;
+  for (const collection of Object.keys(cloudKnownIds)) {
+    cloudKnownIds[collection] = new Set((buckets[collection] || []).map(item => String(item.id)));
+  }
+
+  // Mantener una copia local para tolerar cierres del navegador; en modo nube,
+  // el servidor es la fuente principal al iniciar sesión.
+  await persistDB();
+}
+
+async function loadCloudUsers() {
+  const client = getSupabase();
+  if (!client || !currentUser) return;
+  const { data: ownProfile, error: ownError } = await client.from('app_profiles')
+    .select('id,email,name,role,active,avatar')
+    .eq('id', currentUser.id)
+    .single();
+  if (ownError) throw ownError;
+  if (!ownProfile || !ownProfile.active) throw new Error('Tu usuario está desactivado en la base central.');
+  currentUser = ownProfile;
+  sessionStorage.setItem('agrotrial_session_user', JSON.stringify(currentUser));
+
+  if (currentUser.role === 'admin') {
+    const { data, error } = await client.from('app_profiles')
+      .select('id,email,name,role,active,avatar')
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    usuarios = (data || []).map(profile => ({
+      id: profile.id, email: profile.email, name: profile.name,
+      role: profile.role, active: profile.active, avatar: profile.avatar || '👤'
+    }));
+  } else {
+    usuarios = [{
+      id: currentUser.id, email: currentUser.email, name: currentUser.name,
+      role: currentUser.role, active: currentUser.active, avatar: currentUser.avatar || '👤'
+    }];
+  }
+}
+
+async function syncCloudRecords() {
+  const client = getSupabase();
+  if (!client || !currentUser || cloudSyncBusy) return;
+  cloudSyncBusy = true;
+  try {
+    const batches = [
+      ['ingresos', ingresos],
+      ['egresos', egresos],
+      ['gastosfijos', gastosFijos],
+      ['sugerencias', sugerencias]
+    ];
+    for (const [collection, items] of batches) {
+      const rows = cloudCollectionRows(collection, items);
+      if (rows.length) {
+        const { error } = await client.from('app_records').upsert(rows, { onConflict: 'collection,id' });
+        if (error) throw error;
+      }
+      cloudKnownIds[collection] = new Set((items || []).filter(x => x && x.id != null).map(x => String(x.id)));
+    }
+    updateCloudStatus();
+  } catch (error) {
+    console.error('Error al sincronizar con Supabase:', error);
+    showToast('No se pudo sincronizar con la nube. Tus cambios locales se conservaron.');
+  } finally {
+    cloudSyncBusy = false;
+  }
+}
+
+async function deleteCloudRecord(collection, id) {
+  const client = getSupabase();
+  if (!client || !currentUser || id == null) return;
+  const { error } = await client.from('app_records').delete()
+    .eq('collection', collection).eq('id', String(id));
+  if (error) {
+    console.error('Error al eliminar registro remoto:', error);
+    showToast('El registro se quitó localmente, pero no se pudo eliminar en la nube.');
+  } else if (cloudKnownIds[collection]) {
+    cloudKnownIds[collection].delete(String(id));
+  }
+}
+
+async function startCloudRealtime() {
+  const client = getSupabase();
+  if (!client || !currentUser) return;
+  if (cloudRealtimeChannel) await client.removeChannel(cloudRealtimeChannel);
+  cloudRealtimeChannel = client.channel('agrotrial-records-sync')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'app_records' }, async () => {
+      // Releer el snapshot evita aplicar eventos fuera de orden; evitar pisar
+      // operaciones locales mientras una sincronización está en curso.
+      if (cloudSyncBusy) return;
+      try {
+        await loadCloudRecords();
+        refreshAll();
+      } catch (error) {
+        console.error('Error al actualizar desde la nube:', error);
+      }
+    })
+    .subscribe();
+}
+
+function updateCloudStatus() {
+  const el = document.getElementById('db-status-text');
+  if (!el) return;
+  if (isSupabaseConfigured()) {
+    el.textContent = currentUser
+      ? 'Supabase conectado. Los registros se guardan en la base central y se sincronizan con otros dispositivos.'
+      : 'Supabase está configurado; iniciá sesión con tu usuario de la nube.';
+  } else {
+    el.textContent = 'Modo local: los datos están guardados solo en este navegador. Configurá supabase-config.js para habilitar la base central.';
+  }
 }
 
 function toISODate(d) {
@@ -320,6 +495,25 @@ async function bootApp() {
     showToast('La base de datos no pudo abrirse. Se usa una sesión temporal.');
   }
 
+  if (isSupabaseConfigured()) {
+    // Nunca reutilizar una sesión local como si fuera una identidad de Supabase.
+    currentUser = null;
+    sessionStorage.removeItem('agrotrial_session_user');
+    try {
+      const client = getSupabase();
+      const { data } = await client.auth.getSession();
+      if (data.session && data.session.user) {
+        currentUser = { id: data.session.user.id, email: data.session.user.email };
+        await loadCloudUsers();
+        await loadCloudRecords();
+        await startCloudRealtime();
+      }
+    } catch (error) {
+      console.error('No se pudo restaurar la sesión central:', error);
+      currentUser = null;
+    }
+  }
+
   const now = new Date();
   const yearBadge = document.getElementById('badge-year');
   if (yearBadge) yearBadge.textContent = now.getFullYear();
@@ -336,7 +530,16 @@ async function bootApp() {
   onPcPlazoChange();
   renderPeriodFilters();
 
-  if (currentUser && usuarios.some(u => u.id === currentUser.id && u.active)) {
+  if (isSupabaseConfigured()) {
+    if (currentUser && currentUser.active) {
+      showAppLayout();
+      applyUserRolePermissions();
+      refreshAll();
+    } else {
+      currentUser = null;
+      showLoginScreen();
+    }
+  } else if (currentUser && usuarios.some(u => u.id === currentUser.id && u.active)) {
     showAppLayout();
     applyUserRolePermissions();
     refreshAll();
@@ -344,6 +547,7 @@ async function bootApp() {
     currentUser = null;
     showLoginScreen();
   }
+  updateCloudStatus();
 }
 
 // ── NAVIGATION ─────────────────────────────────────────
@@ -561,8 +765,8 @@ function addEgreso() {
 // ── DELETE ─────────────────────────────────────────────
 function deleteItem(type, id) {
   if (!confirm('¿Eliminar este registro?')) return;
-  if (type === 'ingreso') ingresos = ingresos.filter(x => x.id !== id);
-  else                    egresos  = egresos.filter(x => x.id !== id);
+  if (type === 'ingreso') { ingresos = ingresos.filter(x => x.id !== id); deleteCloudRecord('ingresos', id); }
+  else { egresos = egresos.filter(x => x.id !== id); deleteCloudRecord('egresos', id); }
   save(); refreshAll(); showToast('🗑️ Registro eliminado');
 }
 
@@ -780,6 +984,7 @@ function toggleGastoFijo(id) {
 function deleteGastoFijo(id) {
   if (!confirm('¿Eliminar este gasto fijo?')) return;
   gastosFijos = gastosFijos.filter(x => x.id !== id);
+  deleteCloudRecord('gastosfijos', id);
   save(); refreshAll(); showToast('🗑️ Gasto fijo eliminado');
 }
 
@@ -1250,6 +1455,7 @@ function deleteSugerencia(id) {
     return;
   }
   sugerencias = sugerencias.filter(x => x.id !== id);
+  deleteCloudRecord('sugerencias', id);
   save();
   renderSugerencias();
 }
@@ -1446,16 +1652,44 @@ function showAppLayout() {
   if (appWrapper) appWrapper.style.display = 'flex';
 }
 
-function handleLogin(e) {
+async function handleLogin(e) {
   e.preventDefault();
   const userInput = document.getElementById('role-login-user').value.trim().toLowerCase();
-  const passInput  = document.getElementById('role-login-pass').value.trim();
+  const passInput  = document.getElementById('role-login-pass').value;
+
+  if (isSupabaseConfigured()) {
+    const client = getSupabase();
+    try {
+      const { data, error } = await client.auth.signInWithPassword({ email: userInput, password: passInput });
+      if (error || !data.user) {
+        showToast('Correo o contraseña incorrectos');
+        return;
+      }
+      currentUser = { id: data.user.id, email: data.user.email };
+      await loadCloudUsers();
+      await loadCloudRecords();
+      showAppLayout();
+      applyUserRolePermissions();
+      refreshAll();
+      const config = ROLES_CONFIG[currentUser.role] || ROLES_CONFIG.administracion;
+      showPage(config.defaultPage);
+      await startCloudRealtime();
+      showToast('Sesión iniciada · base central conectada');
+      return;
+    } catch (error) {
+      console.error('Error de inicio de sesión en Supabase:', error);
+      await client.auth.signOut();
+      currentUser = null;
+      sessionStorage.removeItem('agrotrial_session_user');
+      showToast(error.message || 'No se pudo iniciar sesión con la base central');
+      return;
+    }
+  }
 
   const user = usuarios.find(u =>
-    (u.email.toLowerCase() === userInput || u.name.toLowerCase() === userInput) &&
+    ((u.email || '').toLowerCase() === userInput || (u.name || '').toLowerCase() === userInput) &&
     u.pass === passInput
   );
-
   if (!user) {
     showToast('Usuario o contraseña incorrectos');
     return;
@@ -1476,7 +1710,15 @@ function handleLogin(e) {
   showToast('Sesión iniciada');
 }
 
-function logout() {
+async function logout() {
+  if (isSupabaseConfigured() && supabaseClient) {
+    try {
+      if (cloudRealtimeChannel) await supabaseClient.removeChannel(cloudRealtimeChannel);
+      await supabaseClient.auth.signOut();
+    } catch (error) {
+      console.error('Error al cerrar sesión de Supabase:', error);
+    }
+  }
   sessionStorage.removeItem('agrotrial_session_user');
   currentUser = null;
   showLoginScreen();
