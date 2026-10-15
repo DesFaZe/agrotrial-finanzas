@@ -148,6 +148,7 @@ function save() {
 let supabaseClient = null;
 let cloudRealtimeChannel = null;
 let cloudSyncBusy = false;
+let cloudRealtimePendingRefresh = false;
 let cloudDeleteQueue = [];
 let cloudKnownIds = { ingresos: new Set(), egresos: new Set(), gastosfijos: new Set(), sugerencias: new Set() };
 let cloudSnapshotByKey = Object.create(null);
@@ -311,6 +312,18 @@ async function syncCloudRecords() {
     return false;
   } finally {
     cloudSyncBusy = false;
+    if (cloudRealtimePendingRefresh) {
+      cloudRealtimePendingRefresh = false;
+      Promise.resolve().then(async () => {
+        if (!currentUser || cloudSyncBusy) return;
+        try {
+          await loadCloudRecords();
+          refreshAll();
+        } catch (error) {
+          console.error('No se pudo aplicar la actualización pendiente de la nube:', error);
+        }
+      });
+    }
   }
 }
 
@@ -328,7 +341,10 @@ async function startCloudRealtime() {
     .on('postgres_changes', { event: '*', schema: 'public', table: 'app_records' }, async () => {
       // Releer el snapshot evita aplicar eventos fuera de orden; evitar pisar
       // operaciones locales mientras una sincronización está en curso.
-      if (cloudSyncBusy) return;
+      if (cloudSyncBusy) {
+        cloudRealtimePendingRefresh = true;
+        return;
+      }
       try {
         await loadCloudRecords();
         refreshAll();
@@ -1797,7 +1813,7 @@ function closeResetPassModal() {
 
 async function confirmResetPassword() {
   if (isSupabaseConfigured()) {
-    showToast('En modo nube, usá la opción de recuperación de contraseña por correo de Supabase.');
+    showToast('La recuperación de contraseña en nube se gestiona desde Supabase Dashboard → Authentication → Users.');
     return;
   }
   const newPass = document.getElementById('reset-new-pass').value.trim();
