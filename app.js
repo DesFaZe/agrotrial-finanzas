@@ -1972,29 +1972,48 @@ function exportDatabaseJSON() {
 }
 
 function importDatabaseJSON(e) {
-  const file = e.target.files[0];
+  const file = e.target.files && e.target.files[0];
   if (!file) return;
-
   const reader = new FileReader();
-  reader.onload = function(evt) {
+  reader.onload = async function(evt) {
     try {
       const data = JSON.parse(evt.target.result);
-      if (!data.ingresos || !data.egresos) {
+      if (!Array.isArray(data.ingresos) || !Array.isArray(data.egresos)) {
         showToast('❌ Archivo de base de datos no compatible');
         return;
       }
-      ingresos    = data.ingresos || [];
-      egresos     = data.egresos || [];
-      gastosFijos = data.gastosFijos || [];
-      if (data.sugerencias) sugerencias = data.sugerencias;
-      if (data.usuarios && data.usuarios.length) usuarios = data.usuarios;
+      if (!confirm('¿Querés importar este respaldo? Los registros con el mismo ID serán actualizados. Recomendamos descargar un respaldo antes de continuar.')) {
+        e.target.value = '';
+        return;
+      }
 
-      save();
+      ingresos = data.ingresos;
+      egresos = data.egresos;
+      gastosFijos = Array.isArray(data.gastosFijos) ? data.gastosFijos : [];
+      sugerencias = Array.isArray(data.sugerencias) ? data.sugerencias : [];
+
+      if (!isSupabaseConfigured()) {
+        if (Array.isArray(data.usuarios) && data.usuarios.length) usuarios = data.usuarios;
+      } else {
+        // Los usuarios locales pueden contener contraseñas en texto plano y no son
+        // identidades de Supabase Auth: jamás importarlos como perfiles de la nube.
+        await loadCloudUsers();
+      }
+
+      await persistDB();
+      if (isSupabaseConfigured() && currentUser) {
+        await syncCloudRecords();
+      }
       refreshAll();
       closeCloudModal();
-      showToast('✅ ¡Base de datos de AGROTRIAL sincronizada!');
+      showToast(isSupabaseConfigured()
+        ? '✅ Registros importados y enviados a la base central. Los usuarios se migran por invitación.'
+        : '✅ Respaldo restaurado correctamente');
     } catch(err) {
-      showToast('❌ Error al procesar archivo JSON');
+      console.error('Error al importar el respaldo:', err);
+      showToast('❌ No se pudo importar el respaldo. Revisá el archivo y tu conexión.');
+    } finally {
+      e.target.value = '';
     }
   };
   reader.readAsText(file);
