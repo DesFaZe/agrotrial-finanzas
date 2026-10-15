@@ -20,6 +20,32 @@
         <p class="login-brand-tagline">Sistema Integral de Finanzas, Costos y Rentabilidad</p>
       </div>
 
+      <div class="login-card-main" id="setup-step-form" hidden>
+        <div class="login-section-title">
+          <span>Creá el administrador de este dispositivo</span>
+        </div>
+        <p class="field-hint" style="margin-bottom:12px">No hay usuarios todavía. Esta cuenta queda solo en este navegador.</p>
+        <form onsubmit="handleFirstAdmin(event)">
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="setup-name">Nombre</label>
+            <input type="text" id="setup-name" class="form-input" autocomplete="name" required/>
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="setup-email">Correo</label>
+            <input type="email" id="setup-email" class="form-input" autocomplete="username" required/>
+          </div>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <label for="setup-pass">Contraseña</label>
+            <input type="password" id="setup-pass" class="form-input" autocomplete="new-password" minlength="8" required/>
+          </div>
+          <div class="form-group" style="margin-bottom: 16px;">
+            <label for="setup-pass2">Repetir contraseña</label>
+            <input type="password" id="setup-pass2" class="form-input" autocomplete="new-password" minlength="8" required/>
+          </div>
+          <button type="submit" class="btn-primary btn-login-submit">Crear administrador</button>
+        </form>
+      </div>
+
       <div class="login-card-main" id="login-step-form">
         <div class="login-section-title">
           <span>Ingresá con tu usuario asignado</span>
@@ -59,7 +85,7 @@
         <span class="nav-icon">📊</span><span>Dashboard</span>
       </a>
       <a href="#" class="nav-item" data-page="ingresos" data-roles="admin,administracion,contabilidad" onclick="showPage('ingresos',this)">
-        <span class="nav-icon">💰</span><span>Ingresos</span>
+        <span class="nav-icon">💰</span><span>Ventas</span>
       </a>
       <a href="#" class="nav-item" data-page="porcobrar" data-roles="admin,administracion,contabilidad" onclick="showPage('porcobrar',this)">
         <span class="nav-icon">⏳</span><span>Por cobrar</span>
@@ -118,7 +144,7 @@
       </div>
     </header>
     <div class="period-bar">
-      <span class="period-bar-label">Período</span>
+      <span class="period-bar-label" title="Filtra ventas, caja y reportes. La cartera abierta en Por cobrar no se oculta.">Período</span>
       <div class="period-scroll" id="period-filters" role="tablist" aria-label="Filtro de tiempo"></div>
       <input type="date" id="period-dia" class="form-input period-dia-input" onchange="setPeriodoDia(this.value)" hidden/>
     </div>
@@ -127,7 +153,7 @@
     <div id="page-dashboard" class="page active">
       <div class="kpi-grid">
         <div class="kpi-card income">
-          <div class="kpi-label">Ingresos Totales</div>
+          <div class="kpi-label">Ventas</div>
           <div class="kpi-value" id="kpi-ingresos">$0</div>
           <div class="kpi-sub" id="kpi-ingresos-mes">Este mes</div>
         </div>
@@ -141,8 +167,8 @@
           <div class="kpi-value" id="kpi-ganancia">$0</div>
           <div class="kpi-sub" id="kpi-margen">Margen: 0%</div>
         </div>
-        <div class="kpi-card status">
-          <div class="kpi-label">Estado</div>
+        <div class="kpi-card status" onclick="showPage('porcobrar')" style="cursor:pointer" title="Ir a Por cobrar">
+          <div class="kpi-label">Por cobrar</div>
           <div class="kpi-value status-text" id="kpi-estado">–</div>
           <div class="kpi-sub" id="kpi-resultado">Resultado del período</div>
         </div>
@@ -150,7 +176,7 @@
 
       <div class="charts-grid">
         <div class="chart-card">
-          <div class="chart-title">Flujo de Caja Mensual</div>
+          <div class="chart-title">Flujo de caja (lo cobrado, no el crédito pendiente)</div>
           <canvas id="chartFlujo"></canvas>
         </div>
         <div class="chart-card">
@@ -196,10 +222,12 @@
           </div>
           <div class="form-group">
             <label>Tipo de venta</label>
-            <select id="ing-cobro" class="form-input" onchange="onIngCobroChange()">
-              <option value="contado">Contado</option>
-              <option value="credito">Crédito</option>
-            </select>
+            <input type="hidden" id="ing-cobro" value="contado"/>
+            <div class="sale-type" id="ing-sale-type" role="group" aria-label="Tipo de venta">
+              <button type="button" class="sale-type-btn active" data-type="contado" onclick="setTipoVenta('contado')">Contado</button>
+              <button type="button" class="sale-type-btn" data-type="credito" onclick="setTipoVenta('credito')">Crédito</button>
+            </div>
+            <div class="field-hint" id="ing-tipo-hint">El cliente paga ahora. Entra a caja.</div>
           </div>
           <div class="form-group credito-only" id="ing-plazo-wrap" hidden>
             <label>Plazo del crédito</label>
@@ -230,7 +258,7 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Cliente / Comprador</label>
+            <label id="ing-cliente-label">Cliente / Comprador</label>
             <input type="text" id="ing-cliente" class="form-input" placeholder="Nombre del cliente"/>
           </div>
           <div class="form-group">
@@ -272,10 +300,74 @@
     <div id="page-porcobrar" class="page">
       <div class="gf-info-bar">
         <span class="gf-info-icon">⏳</span>
-        <span>La venta puede ser de contado o a crédito. Acá se cargan y se administran las de tipo crédito. Las de contado se cargan en Ingresos.</span>
+        <span>Acá está lo que el cliente todavía debe. La venta de contado se carga en <strong>Ventas</strong>. La de crédito también se puede cargar ahí (tipo Crédito) o abajo en esta pantalla.</span>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card income">
+          <div class="kpi-label">Por cobrar</div>
+          <div class="kpi-value" id="pc-total">$0</div>
+          <div class="kpi-sub" id="pc-total-sub">Saldo abierto</div>
+        </div>
+        <div class="kpi-card expense">
+          <div class="kpi-label">Vencido</div>
+          <div class="kpi-value" id="pc-vencido">$0</div>
+          <div class="kpi-sub" id="pc-vencido-sub">Fuera de plazo</div>
+        </div>
+        <div class="kpi-card status">
+          <div class="kpi-label">Vence en 7 días</div>
+          <div class="kpi-value" id="pc-7d">$0</div>
+          <div class="kpi-sub">A cobrar esta semana</div>
+        </div>
+        <div class="kpi-card profit">
+          <div class="kpi-label">Cobrado en el período</div>
+          <div class="kpi-value" id="pc-cobrado">$0</div>
+          <div class="kpi-sub" id="pc-cobrado-sub">Pagos de créditos en el período</div>
+        </div>
+      </div>
+      <div class="aging-grid" id="pc-aging"></div>
+      <div class="form-card">
+        <div class="form-title">Por cliente</div>
+        <div class="table-card" style="margin:0;border:none">
+          <table class="data-table">
+            <thead><tr><th>Cliente</th><th>Créditos</th><th>Saldo</th><th>Vencido</th></tr></thead>
+            <tbody id="pc-clientes-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <input type="text" id="pc-search" class="form-input search-input" placeholder="Buscar cliente o descripción" oninput="renderPorCobrar()"/>
+        <select id="pc-filter-estado" class="form-input" onchange="renderPorCobrar()">
+          <option value="abiertos">Abiertos (pendiente y parcial)</option>
+          <option value="vencido">Solo vencidos</option>
+          <option value="aldia">Al día</option>
+          <option value="parcial">Pago parcial</option>
+          <option value="cobrado">Cobrados</option>
+          <option value="todos">Todos los créditos</option>
+        </select>
+      </div>
+      <div class="table-card">
+        <div class="recent-header">
+          <span>Cartera de créditos</span>
+          <span class="recent-count" id="pc-list-count">0</span>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Venta</th>
+              <th>Vence</th>
+              <th>Estado</th>
+              <th>Original</th>
+              <th>Saldo</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="pc-tbody"></tbody>
+        </table>
       </div>
       <div class="form-card">
         <div class="form-title">Cargar venta a crédito</div>
+        <p class="field-hint" style="margin-bottom:12px">Misma venta que en Ventas, ya marcada como crédito a 30 días (u otro plazo).</p>
         <div class="form-grid">
           <div class="form-group">
             <label>Fecha de la venta</label>
@@ -320,69 +412,6 @@
             <button class="btn-primary" onclick="addCredito()">Cargar crédito</button>
           </div>
         </div>
-      </div>
-      <div class="kpi-grid">
-        <div class="kpi-card income">
-          <div class="kpi-label">Por cobrar</div>
-          <div class="kpi-value" id="pc-total">$0</div>
-          <div class="kpi-sub" id="pc-total-sub">Saldo abierto</div>
-        </div>
-        <div class="kpi-card expense">
-          <div class="kpi-label">Vencido</div>
-          <div class="kpi-value" id="pc-vencido">$0</div>
-          <div class="kpi-sub" id="pc-vencido-sub">Fuera de plazo</div>
-        </div>
-        <div class="kpi-card status">
-          <div class="kpi-label">Vence en 7 días</div>
-          <div class="kpi-value" id="pc-7d">$0</div>
-          <div class="kpi-sub">A cobrar esta semana</div>
-        </div>
-        <div class="kpi-card profit">
-          <div class="kpi-label">Cobrado en el período</div>
-          <div class="kpi-value" id="pc-cobrado">$0</div>
-          <div class="kpi-sub" id="pc-cobrado-sub">Según filtro de tiempo</div>
-        </div>
-      </div>
-      <div class="aging-grid" id="pc-aging"></div>
-      <div class="form-card">
-        <div class="form-title">Por cliente</div>
-        <div class="table-card" style="margin:0;border:none">
-          <table class="data-table">
-            <thead><tr><th>Cliente</th><th>Créditos</th><th>Saldo</th><th>Vencido</th></tr></thead>
-            <tbody id="pc-clientes-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="filter-bar">
-        <input type="text" id="pc-search" class="form-input search-input" placeholder="Buscar cliente o descripción" oninput="renderPorCobrar()"/>
-        <select id="pc-filter-estado" class="form-input" onchange="renderPorCobrar()">
-          <option value="abiertos">Abiertos (pendiente y parcial)</option>
-          <option value="vencido">Solo vencidos</option>
-          <option value="aldia">Al día</option>
-          <option value="parcial">Pago parcial</option>
-          <option value="cobrado">Cobrados</option>
-          <option value="todos">Todos los créditos</option>
-        </select>
-      </div>
-      <div class="table-card">
-        <div class="recent-header">
-          <span>Cartera de créditos</span>
-          <span class="recent-count" id="pc-list-count">0</span>
-        </div>
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Cliente</th>
-              <th>Venta</th>
-              <th>Vence</th>
-              <th>Estado</th>
-              <th>Original</th>
-              <th>Saldo</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
-          <tbody id="pc-tbody"></tbody>
-        </table>
       </div>
     </div>
 
@@ -450,11 +479,11 @@
     <div id="page-rentabilidad" class="page">
       <div class="kpi-grid">
         <div class="kpi-card income">
-          <div class="kpi-label">Ingresos del Año</div>
+          <div class="kpi-label">Ventas del período</div>
           <div class="kpi-value" id="rent-ingresos">$0</div>
         </div>
         <div class="kpi-card expense">
-          <div class="kpi-label">Costos del Año</div>
+          <div class="kpi-label">Costos del período</div>
           <div class="kpi-value" id="rent-egresos">$0</div>
         </div>
         <div class="kpi-card profit">
@@ -469,13 +498,16 @@
 
       <div class="charts-grid">
         <div class="chart-card chart-full">
-          <div class="chart-title">Rentabilidad Mensual – Ingresos vs Egresos</div>
+          <div class="chart-title">Últimos 12 meses (calendario, no sigue el filtro de período)</div>
           <canvas id="chartRentabilidad"></canvas>
         </div>
       </div>
 
       <div class="table-card">
-        <div class="recent-header"><span>Desglose Mensual</span></div>
+        <div class="recent-header">
+          <span>Desglose mensual (12 meses)</span>
+          <span class="recent-count" id="rent-period-hint"></span>
+        </div>
         <table class="data-table">
           <thead><tr><th>Mes</th><th>Ingresos</th><th>Var. (Egresos)</th><th>🔒 Fijos/mes</th><th>Total Costos</th><th>Resultado</th><th>Margen</th></tr></thead>
           <tbody id="rent-tbody"></tbody>
@@ -487,7 +519,7 @@
     <div id="page-gastosfijos" class="page">
       <div class="gf-info-bar">
         <span class="gf-info-icon">🔒</span>
-        <span>Los <strong>Gastos Fijos</strong> son costos que se repiten automáticamente cada mes (arrendamiento, sueldos, seguros, servicios). Se incluyen en el cálculo de rentabilidad.</span>
+        <span>Los <strong>gastos fijos</strong> se cargan por mes (o año). En Hoy o 7 días se prorratean por día; no se cobra el mes entero.</span>
       </div>
 
       <div class="form-card">
@@ -764,12 +796,47 @@
           Respaldo
         </div>
         <div style="font-size: 12px; color: var(--text2); line-height: 1.5; margin-bottom: 12px;">
-          Descargá o restaurá la base completa:
+          Descargá o restaurá la base completa. Al restaurar se valida el archivo y se pide confirmación antes de pisar datos. Los usuarios no se reemplazan salvo que lo confirmes.
         </div>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
           <button class="btn-primary" onclick="exportDatabaseJSON()">Descargar respaldo</button>
           <button class="btn-secondary" onclick="document.getElementById('import-db-input').click()">Restaurar respaldo</button>
           <input type="file" id="import-db-input" style="display:none" accept=".json" onchange="importDatabaseJSON(event)"/>
+        </div>
+      </div>
+
+      <div class="cloud-info-card" style="margin-top: 12px;">
+        <div style="font-size: 13px; font-weight: 700; margin-bottom: 6px; color: var(--blue);">
+          Nube (Firebase)
+        </div>
+        <p class="field-hint" style="margin-bottom:12px">
+          Para compartir entre celular y PC: creá un proyecto en Firebase, activá Firestore, y pegá acá apiKey, projectId y authDomain.
+          La clave de sincronización es un código largo que copiás en el otro dispositivo. Las reglas deben permitir leer/escribir
+          <code>agrotrial/{syncKey}</code>.
+        </p>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>apiKey</label>
+            <input type="text" id="fb-apikey" class="form-input" autocomplete="off"/>
+          </div>
+          <div class="form-group">
+            <label>projectId</label>
+            <input type="text" id="fb-project" class="form-input" autocomplete="off"/>
+          </div>
+          <div class="form-group">
+            <label>authDomain</label>
+            <input type="text" id="fb-auth" class="form-input" placeholder="proyecto.firebaseapp.com" autocomplete="off"/>
+          </div>
+          <div class="form-group">
+            <label>Clave de sincronización</label>
+            <input type="text" id="fb-synckey" class="form-input" autocomplete="off"/>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px;">
+          <button type="button" class="btn-secondary" onclick="generateSyncKey()">Generar clave</button>
+          <button type="button" class="btn-secondary" onclick="saveCloudSettings()">Guardar conexión</button>
+          <button type="button" class="btn-primary" onclick="pushToCloud()">Subir a la nube</button>
+          <button type="button" class="btn-secondary" onclick="pullFromCloud()">Bajar de la nube</button>
         </div>
       </div>
 
