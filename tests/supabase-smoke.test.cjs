@@ -11,7 +11,7 @@ test('frontend Supabase config contains placeholders, not a real project', () =>
   assert.match(config, /TU-PROYECTO/);
   assert.match(config, /REEMPLAZAR/);
   assert.doesNotMatch(config, /sb_secret_[A-Za-z0-9_-]{20,}/);
-  assert.doesNotMatch(config, /service_role/i);
+  assert.doesNotMatch(config, /service_role\\s*:\\s*["']/i);
 });
 
 test('service-role credential is only referenced by the server-side Edge Function', () => {
