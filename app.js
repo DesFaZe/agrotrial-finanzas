@@ -121,13 +121,16 @@ async function loadDatabase() {
 }
 
 async function persistDB() {
-  await Promise.all([
+  const tasks = [
     idbReplaceAll('ingresos', ingresos),
     idbReplaceAll('egresos', egresos),
     idbReplaceAll('gastosfijos', gastosFijos),
-    idbReplaceAll('usuarios', usuarios),
     idbReplaceAll('sugerencias', sugerencias)
-  ]);
+  ];
+  // En modo nube los perfiles viven en Supabase Auth/app_profiles y nunca se
+  // copian a IndexedDB local como si fueran usuarios con contraseña local.
+  if (!isSupabaseConfigured()) tasks.push(idbReplaceAll('usuarios', usuarios));
+  await Promise.all(tasks);
 }
 
 function save() {
@@ -250,8 +253,19 @@ async function syncCloudRecords() {
       ['sugerencias', sugerencias]
     ];
     for (const [collection, items] of batches) {
-      const rows = cloudCollectionRows(collection, items);
-      if (rows.length) {
+      let rows = cloudCollectionRows(collection, items);
+      if (collection === 'sugerencias' && currentUser.role !== 'admin') {
+        // Usuarios normales solo envían sugerencias nuevas propias; no actualizan
+        // estados ni reescriben las sugerencias de otras personas.
+        rows = rows.filter(row =>
+          row.payload.autorId === currentUser.id &&
+          !cloudKnownIds.sugerencias.has(String(row.id))
+        );
+        if (rows.length) {
+          const { error } = await client.from('app_records').insert(rows);
+          if (error) throw error;
+        }
+      } else if (rows.length) {
         const { error } = await client.from('app_records').upsert(rows, { onConflict: 'collection,id' });
         if (error) throw error;
       }
