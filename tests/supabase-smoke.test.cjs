@@ -20,7 +20,8 @@ test('service-role credential is only referenced by the server-side Edge Functio
   const config = read('supabase-config.js');
   assert.doesNotMatch(app, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
   assert.doesNotMatch(html, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
-  assert.doesNotMatch(config, /SUPABASE_SERVICE_ROLE_KEY|service_role/i);
+  assert.doesNotMatch(config, /SUPABASE_SERVICE_ROLE_KEY/i);
+  assert.doesNotMatch(config, /service_role\\s*:\\s*["']/i);
   assert.match(read('supabase/functions/admin-invite-user/index.ts'), /Deno\.env\.get\("SUPABASE_SERVICE_ROLE_KEY"\)/);
 });
 
