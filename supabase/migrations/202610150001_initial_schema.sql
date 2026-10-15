@@ -126,7 +126,7 @@ on public.app_records for insert to authenticated
 with check (
   (
     collection in ('ingresos', 'egresos', 'gastosfijos')
-    and (select public.current_app_role()) in ('admin', 'contabilidad')
+    and (select public.current_app_role()) in ('admin', 'administracion', 'contabilidad')
   )
   or (
     collection = 'sugerencias'
@@ -144,7 +144,7 @@ on public.app_records for update to authenticated
 using (
   (
     collection in ('ingresos', 'egresos', 'gastosfijos')
-    and (select public.current_app_role()) in ('admin', 'contabilidad')
+    and (select public.current_app_role()) in ('admin', 'administracion', 'contabilidad')
   )
   or (
     collection = 'sugerencias'
@@ -158,7 +158,7 @@ using (
 with check (
   (
     collection in ('ingresos', 'egresos', 'gastosfijos')
-    and (select public.current_app_role()) in ('admin', 'contabilidad')
+    and (select public.current_app_role()) in ('admin', 'administracion', 'contabilidad')
   )
   or (
     collection = 'sugerencias'
@@ -170,12 +170,12 @@ with check (
   )
 );
 
-drop policy if exists "finance_delete_admin_only" on public.app_records;
-create policy "finance_delete_admin_only"
+drop policy if exists "finance_delete_authorized" on public.app_records;
+create policy "finance_delete_authorized"
 on public.app_records for delete to authenticated
 using (
-  (select public.current_app_role()) = 'admin'
-  and collection <> 'meta'
+  (select public.current_app_role()) in ('admin', 'administracion', 'contabilidad')
+  and collection in ('ingresos', 'egresos', 'gastosfijos', 'sugerencias')
 );
 
 -- Habilitar eventos Realtime para cambios en los registros, si la publicación existe
